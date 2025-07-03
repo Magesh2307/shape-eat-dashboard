@@ -1,107 +1,64 @@
-// Types principaux pour l'application Shape Eat
-
-export interface Machine {
-  id: number;
-  name?: string;
-  friendlyName?: string;
-  venue?: { 
-    name?: string;
-    id?: number;
-    externalId?: string;
-  };
-  location?: {
-    description?: string;
-  };
-  status?: string;
-  last_connection?: string | null;
-  enabled?: boolean;
-  todaySales?: number;
-  currency?: {
-    symbol?: string;
-  };
-  lastVend?: string | null;
-  refundedCount?: number;
-  declinedCount?: number;
-}
-
-export interface OrderSale {
-  id: number;
-  total: string;
+// Types pour les ventes
+export interface Sale {
+  id: string;
+  amount: string;
+  status: string;
   createdAt: string;
-  createdAtLocalized?: string;
-  locationName?: string;
-  totalCharged?: string | number;
-  paymentStatusDisplay?: string;
-  charged?: string;
-  machine: {
-    id: number;
-    friendlyName: string;
-  };
-  location?: {
-    venue?: {
-      name?: string;
-    };
-  };
-  productSales: Array<{
-    product: {
-      name: string;
-      category?: {
-        name: string;
-      };
-    };
-    price: string;
-    isRefunded?: boolean;
-    errorMessage?: string;
-  }>;
-  customer?: {
-    email?: string;
-    firstName?: string;
-    lastName?: string;
-  };
+  machineId?: string;
+  machineName?: string;
+  productName?: string;
+  customerEmail?: string;
+  paymentMethod?: string;
+  [key: string]: any;
 }
 
-export interface Channel {
-  id: number;
-  product: {
-    name: string;
-    category?: {
-      name: string;
-    };
-  };
-  stockLevel: number;
-  lowStockLevel: number;
-  idealCapacity: number;
-  shelf: number;
-  channel: number;
+// Types pour les machines
+export interface Machine {
+  id: string;
+  name: string;
+  status?: string;
+  location?: string;
+  serialNumber?: string;
+  model?: string;
+  [key: string]: any;
 }
 
-export interface StockAlert {
-  machineId: number;
-  machineName: string;
-  channelId: number;
+// Types pour les statistiques API
+export interface ApiStats {
+  endpoint: string;
+  totalAPI: number;
+  retrieved: number;
+  todaySales: number;
+  successfulSales: number;
+  totalRevenue: number;
+}
+
+// Types pour les produits
+export interface Product {
+  id: string;
+  name: string;
+  price: string;
+  category?: string;
+  [key: string]: any;
+}
+
+// Types pour les commandes
+export interface Order {
+  id: string;
+  amount: string;
+  status: string;
+  createdAt: string;
+  items?: OrderItem[];
+  [key: string]: any;
+}
+
+export interface OrderItem {
+  id: string;
+  productId: string;
   productName: string;
-  stockLevel: number;
-  percentage: number;
+  quantity: number;
+  price: string;
 }
 
-export interface StockMovement {
-  id: number;
-  quantity: number;
-  eventType: string;
-  movementType: string;
-  createdAtUtc: string;
-  machine: {
-    id: number;
-    friendlyName: string;
-  };
-  product: {
-    id: number;
-    externalId: string;
-    category: {
-      name: string;
-    };
-  };
-  operator?: {
-    name: string;
-  };
-}
+// Types pour les filtres de période
+export type PeriodFilter = 'today' | 'yesterday' | 'week' | 'month' | 'custom';

@@ -45,8 +45,7 @@ const DropdownPortal: React.FC<{
   children: React.ReactNode;
   targetRef: React.RefObject<HTMLElement>;
   isOpen: boolean;
-  onClose: () => void;
-}> = ({ children, targetRef, isOpen, onClose }) => {
+}> = ({ children, targetRef, isOpen }) => {
   const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
 
   useEffect(() => {
@@ -77,18 +76,15 @@ const DropdownPortal: React.FC<{
 
   return ReactDOM.createPortal(
     <>
-      <div 
-        className="fixed inset-0 z-[999]" 
-        onClick={onClose}
-      />
+      {/* Overlay transparent pour fermer en cliquant ailleurs */}
+      <div className="fixed inset-0 z-[999]" />
       <div
         style={{
           position: 'absolute',
           top: position.top,
           left: position.left,
-          width: Math.max(position.width, 288),
-          zIndex: 1000,
-          pointerEvents: 'auto'
+          width: Math.max(position.width, 288), // minimum 288px (w-72)
+          zIndex: 1000
         }}
       >
         {children}
@@ -99,9 +95,11 @@ const DropdownPortal: React.FC<{
 };
 
 const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
-  // État de chargement
-  const [isProcessing, setIsProcessing] = useState(false);
-  
+  // Vérification et log pour debug
+  useEffect(() => {
+    console.log('SalesView - Sales data:', sales?.length || 0);
+  }, [sales]);
+
   // États pour les onglets
   const [activeTab, setActiveTab] = useState<'transactions' | 'products'>('transactions');
 
@@ -127,25 +125,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
   const [productSortBy, setProductSortBy] = useState<'revenue' | 'quantity'>('revenue');
   const [topProductsLimit, setTopProductsLimit] = useState(20);
 
-  // Refs pour les dropdowns
-  const venueButtonRef = useRef<HTMLButtonElement>(null);
-  const categoryButtonRef = useRef<HTMLButtonElement>(null);
-
-  const itemsPerPage = 50;
-
-  // Vérification des données
-  if (!sales || !Array.isArray(sales)) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <p className="text-slate-400">Aucune donnée de vente disponible</p>
-          <p className="text-sm text-slate-500 mt-2">Veuillez patienter pendant le chargement...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Debounce pour la recherche avec optimisation
+  // Debounce pour la recherche
   useEffect(() => {
     const timer = setTimeout(() => {
       if (activeTab === 'transactions') {
@@ -168,6 +148,24 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
   useEffect(() => {
     setCurrentPage(1);
   }, [debouncedSearchQuery, selectedPeriod, selectedVenues, selectedCategories]);
+
+  // Refs pour les dropdowns
+  const venueButtonRef = useRef<HTMLButtonElement>(null);
+  const categoryButtonRef = useRef<HTMLButtonElement>(null);
+
+  const itemsPerPage = 50;
+
+  // Vérification des données
+  if (!sales || !Array.isArray(sales)) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <p className="text-slate-400">Aucune donnée de vente disponible</p>
+          <p className="text-sm text-slate-500 mt-2">Veuillez patienter pendant le chargement...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Extraire toutes les venues uniques
   const allVenues = useMemo(() => {
@@ -213,70 +211,54 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
     return Array.from(categoriesSet).sort();
   }, [sales]);
 
-  // Fonction de filtrage par date optimisée
+  // Fonction de filtrage par date
   const getDateFilteredSales = useCallback(() => {
-    try {
-      let filtered = [...sales];
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      
-      switch (selectedPeriod) {
-        case 'today':
+    let filtered = [...sales];
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    switch (selectedPeriod) {
+      case 'today':
+        filtered = filtered.filter(sale => {
+          const saleDate = new Date(sale.createdAt);
+          return saleDate >= today;
+        });
+        break;
+      case 'yesterday':
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        filtered = filtered.filter(sale => {
+          const saleDate = new Date(sale.createdAt);
+          return saleDate >= yesterday && saleDate < today;
+        });
+        break;
+      case '7days':
+        const sevenDaysAgo = new Date(today);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        filtered = filtered.filter(sale => {
+          const saleDate = new Date(sale.createdAt);
+          return saleDate >= sevenDaysAgo;
+        });
+        break;
+      case '30days':
+        const thirtyDaysAgo = new Date(today);
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        filtered = filtered.filter(sale => {
+          const saleDate = new Date(sale.createdAt);
+          return saleDate >= thirtyDaysAgo;
+        });
+        break;
+      case 'custom':
+        if (customDateRange.start && customDateRange.end) {
           filtered = filtered.filter(sale => {
             const saleDate = new Date(sale.createdAt);
-            return saleDate >= today;
+            return saleDate >= customDateRange.start! && saleDate <= customDateRange.end!;
           });
-          break;
-        case 'yesterday':
-          const yesterday = new Date(today);
-          yesterday.setDate(yesterday.getDate() - 1);
-          filtered = filtered.filter(sale => {
-            const saleDate = new Date(sale.createdAt);
-            return saleDate >= yesterday && saleDate < today;
-          });
-          break;
-        case '7days':
-          const sevenDaysAgo = new Date(today);
-          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-          filtered = filtered.filter(sale => {
-            const saleDate = new Date(sale.createdAt);
-            return saleDate >= sevenDaysAgo;
-          });
-          break;
-        case '30days':
-          const thirtyDaysAgo = new Date(today);
-          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-          filtered = filtered.filter(sale => {
-            const saleDate = new Date(sale.createdAt);
-            return saleDate >= thirtyDaysAgo;
-          });
-          break;
-        case 'custom':
-          if (customDateRange.start && customDateRange.end) {
-            // Conversion sécurisée des dates
-            const startDate = customDateRange.start instanceof Date 
-              ? new Date(customDateRange.start.getTime()) 
-              : new Date(customDateRange.start);
-            const endDate = customDateRange.end instanceof Date 
-              ? new Date(customDateRange.end.getTime()) 
-              : new Date(customDateRange.end);
-            
-            // Ajouter 23h59m59s à la date de fin
-            endDate.setHours(23, 59, 59, 999);
-            
-            filtered = filtered.filter(sale => {
-              const saleDate = new Date(sale.createdAt);
-              return saleDate >= startDate && saleDate <= endDate;
-            });
-          }
-          break;
-      }
-      
-      return filtered;
-    } catch (error) {
-      console.error('Error in getDateFilteredSales:', error);
-      return [];
+        }
+        break;
     }
+    
+    return filtered;
   }, [sales, selectedPeriod, customDateRange]);
 
   // Fonction de filtrage par venue
@@ -317,121 +299,167 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
     });
   }, [selectedCategories]);
 
-  // Filtrage et tri pour l'onglet transactions avec optimisation
+  // Filtrage et tri pour l'onglet transactions
   const filteredAndSortedSales = useMemo(() => {
-    setIsProcessing(true);
+    let filtered = getDateFilteredSales();
+    filtered = getVenueFilteredSales(filtered);
+    filtered = getCategoryFilteredSales(filtered);
     
-    // Utiliser setTimeout pour ne pas bloquer l'UI
-    const result = (() => {
-      let filtered = getDateFilteredSales();
-      filtered = getVenueFilteredSales(filtered);
-      filtered = getCategoryFilteredSales(filtered);
+    // Filtrage par recherche
+    if (debouncedSearchQuery) {
+      console.log('Search query:', debouncedSearchQuery);
+      console.log('First sale example:', sales[0]);
+      console.log('Total sales before search:', filtered.length);
       
-      // Filtrage par recherche optimisé
-      if (debouncedSearchQuery) {
+      filtered = filtered.filter(sale => {
         const query = debouncedSearchQuery.toLowerCase().trim();
         
-        filtered = filtered.filter(sale => {
-          // Construction optimisée de la chaîne de recherche
-          const searchParts = [];
+        // Vérifications sécurisées avec valeurs par défaut
+        const transactionId = (sale.id || sale._id || sale.transactionId || '').toString().toLowerCase();
+        
+        // Plusieurs façons d'obtenir le nom de la venue
+        const venueName = (
+          sale.location?.venue?.name || 
+          sale.location?.name || 
+          sale.venue?.name || 
+          sale.venueName || 
+          sale.locationName || 
+          ''
+        ).toString().toLowerCase();
+        
+        // Montant avec plusieurs formats possibles
+        const amount = (
+          parseFloat(sale.total || sale.totalCharged || sale.amount || sale.charged || '0')
+        ).toFixed(2);
+        
+        // Code promo avec plusieurs champs possibles
+        const promoCode = (
+          sale.promoCode || 
+          sale.couponCode || 
+          sale.voucherCode || 
+          sale.discount?.code || 
+          sale.discountCode || 
+          ''
+        ).toString().toLowerCase();
+        
+        // Extraire les produits de toutes les façons possibles
+        const products = sale.productSales || sale.products || sale.items || sale.orderItems || [];
+        
+        // Extraire les catégories de manière exhaustive
+        const categories = products.map((p: any) => {
+          // Toutes les variations possibles de catégorie
+          const categoryVariations = [
+            p.category,
+            p.category?.name,
+            p.productCategory,
+            p.productCategory?.name,
+            p.product?.category,
+            p.product?.category?.name,
+            p.item?.category,
+            p.categoryName
+          ];
           
-          // ID
-          if (sale.id) searchParts.push(sale.id.toLowerCase());
+          // Prendre la première valeur non vide
+          const categoryName = categoryVariations.find(c => c && typeof c === 'string') || '';
+          return categoryName.toString().toLowerCase();
+        }).filter(c => c).join(' ');
+        
+        // Recherche dans les noms de produits avec toutes les variations
+        const productNames = products.map((p: any) => {
+          // Toutes les variations possibles de nom de produit
+          const nameVariations = [
+            p.productName,
+            p.name,
+            p.product?.name,
+            p.item?.name,
+            p.title,
+            p.description
+          ];
           
-          // Venue
-          if (sale.location?.venue?.name) {
-            searchParts.push(sale.location.venue.name.toLowerCase());
-          }
-          
-          // Montant
-          const amount = parseFloat(sale.total || sale.totalCharged || '0');
-          searchParts.push(amount.toFixed(2));
-          
-          // Code promo
-          const promoCode = sale.promoCode || sale.couponCode || sale.voucherCode || '';
-          if (promoCode) searchParts.push(promoCode.toLowerCase());
-          
-          // Email
-          const email = sale.customerEmail || sale.customer?.email || sale.email || '';
-          if (email) searchParts.push(email.toLowerCase());
-          
-          // Produits et catégories
-          const products = sale.productSales || sale.products || [];
-          products.forEach((p: any) => {
-            if (p.productName || p.name) {
-              searchParts.push((p.productName || p.name).toLowerCase());
-            }
-            
-            let catName = '';
-            if (typeof p.category === 'string') catName = p.category;
-            else if (p.category?.name) catName = p.category.name;
-            else if (p.productCategory) {
-              catName = typeof p.productCategory === 'string' 
-                ? p.productCategory 
-                : p.productCategory.name || '';
-            }
-            if (catName) searchParts.push(catName.toLowerCase());
-          });
-          
-          const searchText = searchParts.join(' ');
-          return searchText.includes(query);
-        });
-      }
-
-      // Tri
-      if (sortConfig) {
-        filtered.sort((a, b) => {
-          let aValue: any;
-          let bValue: any;
-
-          switch (sortConfig.key) {
-            case 'date':
-              aValue = new Date(a.createdAt).getTime();
-              bValue = new Date(b.createdAt).getTime();
-              break;
-            case 'venue':
-              aValue = a.location?.venue?.name || '';
-              bValue = b.location?.venue?.name || '';
-              break;
-            case 'amount':
-              aValue = parseFloat(a.total || a.totalCharged || '0');
-              bValue = parseFloat(b.total || b.totalCharged || '0');
-              break;
-            case 'status':
-              aValue = a.charged === 'Yes' ? 1 : 0;
-              bValue = b.charged === 'Yes' ? 1 : 0;
-              break;
-            default:
-              return 0;
-          }
-
-          if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-          if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-          return 0;
-        });
-      }
-
-      return filtered;
-    })();
-
-    // Démarquer la fin du traitement
-    setTimeout(() => setIsProcessing(false), 0);
-    
-    return result;
-  }, [sales, debouncedSearchQuery, sortConfig, selectedPeriod, customDateRange, selectedVenues, selectedCategories, getDateFilteredSales, getVenueFilteredSales, getCategoryFilteredSales]);
-
-  // Calculs pour l'onglet produits optimisé
-  const productStats = useMemo(() => {
-    // Éviter de recalculer si on n'est pas sur l'onglet produits
-    if (activeTab !== 'products') {
-      return {
-        products: [],
-        totalProducts: 0,
-        totalQuantity: 0,
-        totalRevenue: 0
-      };
+          // Prendre la première valeur non vide
+          const productName = nameVariations.find(n => n && typeof n === 'string') || '';
+          return productName.toString().toLowerCase();
+        }).filter(n => n).join(' ');
+        
+        // Email client avec plusieurs variations
+        const customerEmail = (
+          sale.customerEmail || 
+          sale.customer?.email || 
+          sale.email || 
+          sale.user?.email || 
+          sale.buyerEmail || 
+          ''
+        ).toString().toLowerCase();
+        
+        // Machine/Terminal
+        const machineName = (
+          sale.machine?.friendlyName || 
+          sale.machine?.name || 
+          sale.terminal?.name || 
+          ''
+        ).toString().toLowerCase();
+        
+        // Construire une chaîne de recherche complète
+        const searchableText = [
+          transactionId,
+          venueName,
+          amount,
+          promoCode,
+          categories,
+          productNames,
+          customerEmail,
+          machineName
+        ].join(' ');
+        
+        // Debug pour voir ce qu'on recherche
+        if (filtered.length < 5) { // Ne log que les premiers pour éviter de spammer
+          console.log('Searchable text for sale:', sale.id, searchableText);
+        }
+        
+        return searchableText.includes(query);
+      });
+      
+      console.log('Total sales after search:', filtered.length);
     }
 
+    // Tri
+    if (sortConfig) {
+      filtered.sort((a, b) => {
+        let aValue: any;
+        let bValue: any;
+
+        switch (sortConfig.key) {
+          case 'date':
+            aValue = new Date(a.createdAt).getTime();
+            bValue = new Date(b.createdAt).getTime();
+            break;
+          case 'venue':
+            aValue = a.location?.venue?.name || '';
+            bValue = b.location?.venue?.name || '';
+            break;
+          case 'amount':
+            aValue = parseFloat(a.total || a.totalCharged || '0');
+            bValue = parseFloat(b.total || b.totalCharged || '0');
+            break;
+          case 'status':
+            aValue = a.charged === 'Yes' ? 1 : 0;
+            bValue = b.charged === 'Yes' ? 1 : 0;
+            break;
+          default:
+            return 0;
+        }
+
+        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return filtered;
+  }, [sales, debouncedSearchQuery, sortConfig, selectedPeriod, customDateRange, selectedVenues, selectedCategories, getDateFilteredSales, getVenueFilteredSales, getCategoryFilteredSales]);
+
+  // Calculs pour l'onglet produits
+  const productStats = useMemo(() => {
     let filtered = getDateFilteredSales();
     filtered = getVenueFilteredSales(filtered);
     
@@ -446,8 +474,6 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
       products.forEach((product: any) => {
         const productName = product.productName || product.name || product.product?.name || 'Produit inconnu';
         
-        if (productName === 'Produit inconnu') return;
-        
         // Extraire le nom de la catégorie
         let categoryName = '';
         if (typeof product.category === 'string') {
@@ -458,6 +484,10 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
           categoryName = typeof product.productCategory === 'string' 
             ? product.productCategory 
             : product.productCategory.name || '';
+        } else if (product.product?.category) {
+          categoryName = typeof product.product.category === 'string'
+            ? product.product.category
+            : product.product.category.name || '';
         }
         categoryName = categoryName || 'Non catégorisé';
         
@@ -465,28 +495,30 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
         const price = parseFloat(product.price || product.unitPrice || '0');
         const total = quantity * price;
         
-        const key = `${productName}_${categoryName}`;
-        
-        if (productMap.has(key)) {
-          const existing = productMap.get(key);
-          existing.quantity += quantity;
-          existing.revenue += total;
-          existing.salesCount += 1;
-          if (venueId && !existing.venues.has(venueId)) {
-            existing.venues.set(venueId, venueName);
-          }
-        } else {
-          const venues = new Map();
-          if (venueId) venues.set(venueId, venueName);
+        if (productName !== 'Produit inconnu') {
+          const key = `${productName}_${categoryName}`;
           
-          productMap.set(key, {
-            name: productName,
-            category: categoryName,
-            quantity: quantity,
-            revenue: total,
-            salesCount: 1,
-            venues: venues
-          });
+          if (productMap.has(key)) {
+            const existing = productMap.get(key);
+            existing.quantity += quantity;
+            existing.revenue += total;
+            existing.salesCount += 1;
+            if (venueId && !existing.venues.has(venueId)) {
+              existing.venues.set(venueId, venueName);
+            }
+          } else {
+            const venues = new Map();
+            if (venueId) venues.set(venueId, venueName);
+            
+            productMap.set(key, {
+              name: productName,
+              category: categoryName,
+              quantity: quantity,
+              revenue: total,
+              salesCount: 1,
+              venues: venues
+            });
+          }
         }
       });
     });
@@ -507,10 +539,19 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
     // Filtrer par recherche de produit
     if (debouncedProductSearchQuery) {
       const query = debouncedProductSearchQuery.toLowerCase().trim();
+      console.log('Product search query:', query);
+      console.log('Products before search:', products.length);
+      
       products = products.filter(p => {
-        const searchText = `${p.name.toLowerCase()} ${p.category.toLowerCase()}`;
-        return searchText.includes(query);
+        // Chercher dans le nom du produit et la catégorie
+        const productName = (p.name || '').toString().toLowerCase();
+        const categoryName = (p.category || '').toString().toLowerCase();
+        const searchableText = `${productName} ${categoryName}`;
+        
+        return searchableText.includes(query);
       });
+      
+      console.log('Products after search:', products.length);
     }
     
     // Trier selon le critère sélectionné
@@ -539,14 +580,14 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
       totalQuantity,
       totalRevenue
     };
-  }, [activeTab, sales, selectedPeriod, customDateRange, selectedVenues, selectedCategories, debouncedProductSearchQuery, productSortBy, topProductsLimit, getDateFilteredSales, getVenueFilteredSales]);
+  }, [sales, selectedPeriod, customDateRange, selectedVenues, selectedCategories, debouncedProductSearchQuery, productSortBy, topProductsLimit, getDateFilteredSales, getVenueFilteredSales]);
 
   // Données pour le graphique
   const chartData = useMemo(() => {
     return productStats.products.slice(0, 10).map((product, index) => ({
       name: product.name.length > 20 ? product.name.substring(0, 20) + '...' : product.name,
       value: productSortBy === 'revenue' ? product.revenue : product.quantity,
-      fill: `hsl(${158 + index * 5}, 70%, 50%)`
+      fill: `hsl(${158 + index * 5}, 70%, 50%)` // Dégradé de couleurs emerald
     }));
   }, [productStats.products, productSortBy]);
 
@@ -624,23 +665,36 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
 
   const hasActiveFilters = selectedPeriod !== 'all' || selectedVenues.length > 0 || selectedCategories.length > 0;
 
-  // Message de chargement si traitement en cours
-  if (isProcessing && sales.length > 1000) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="inline-flex items-center px-4 py-2 font-semibold leading-6 text-sm shadow rounded-md text-white bg-emerald-500 hover:bg-emerald-400 transition ease-in-out duration-150">
-            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            Traitement en cours...
-          </div>
-          <p className="text-sm text-slate-500 mt-2">Analyse de {sales.length} ventes</p>
-        </div>
-      </div>
-    );
-  }
+  // Fermer les dropdowns quand on clique ailleurs
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showVenueDropdown || showCategoryDropdown) {
+        const target = event.target as HTMLElement;
+        
+        // Vérifier si le clic est en dehors des dropdowns et des boutons
+        const isOutsideVenue = venueButtonRef.current && !venueButtonRef.current.contains(target);
+        const isOutsideCategory = categoryButtonRef.current && !categoryButtonRef.current.contains(target);
+        
+        // Si le clic est sur l'overlay, fermer les deux
+        if (target.classList.contains('fixed') && target.classList.contains('inset-0')) {
+          setShowVenueDropdown(false);
+          setShowCategoryDropdown(false);
+        }
+        // Sinon, fermer seulement le dropdown concerné
+        else {
+          if (showVenueDropdown && isOutsideVenue) {
+            setShowVenueDropdown(false);
+          }
+          if (showCategoryDropdown && isOutsideCategory) {
+            setShowCategoryDropdown(false);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showVenueDropdown, showCategoryDropdown]);
 
   return (
     <div className="space-y-6">
@@ -657,6 +711,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
             <button
               onClick={() => {
                 setActiveTab('transactions');
+                // Réinitialiser la recherche produits
                 setProductSearchQuery('');
                 setDebouncedProductSearchQuery('');
               }}
@@ -668,7 +723,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
             >
               <div className="flex items-center space-x-2">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
                 <span>Transactions</span>
               </div>
@@ -677,6 +732,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
             <button
               onClick={() => {
                 setActiveTab('products');
+                // Réinitialiser la recherche transactions
                 setSearchQuery('');
                 setDebouncedSearchQuery('');
               }}
@@ -707,7 +763,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
                 </svg>
                 <input
                   type="text"
-                  placeholder={activeTab === 'transactions' ? "Rechercher par ID, venue, montant..." : "Rechercher par nom de produit..."}
+                  placeholder={activeTab === 'transactions' ? "Rechercher par ID, venue, montant, code promo, catégorie..." : "Rechercher par nom de produit ou catégorie..."}
                   value={activeTab === 'transactions' ? searchQuery : productSearchQuery}
                   onChange={(e) => activeTab === 'transactions' ? setSearchQuery(e.target.value) : setProductSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200"
@@ -750,10 +806,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
                 <span className="truncate">
                   {selectedVenues.length === 0 
                     ? 'Toutes les venues' 
-                    : selectedVenues.map(venueId => {
-                        const venue = allVenues.find(v => v.id === venueId);
-                        return venue?.name || '';
-                      }).filter(name => name).join(', ')
+                    : `${selectedVenues.length} venue${selectedVenues.length > 1 ? 's' : ''} sélectionnée${selectedVenues.length > 1 ? 's' : ''}`
                   }
                 </span>
                 <svg className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${showVenueDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -761,11 +814,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
                 </svg>
               </button>
 
-              <DropdownPortal 
-                targetRef={venueButtonRef} 
-                isOpen={showVenueDropdown}
-                onClose={() => setShowVenueDropdown(false)}
-              >
+              <DropdownPortal targetRef={venueButtonRef} isOpen={showVenueDropdown}>
                 <div className="w-full bg-slate-800 border border-slate-600 rounded-xl shadow-2xl overflow-hidden">
                   <div className="sticky top-0 bg-slate-800 border-b border-slate-700 p-3">
                     <button
@@ -799,7 +848,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
                               }}
                               className="w-4 h-4 text-emerald-500 bg-slate-700 border-slate-600 rounded focus:ring-emerald-500 focus:ring-2"
                             />
-                            <span className="ml-3 text-sm text-white select-none">{venue.name}</span>
+                            <span className="ml-3 text-sm text-white">{venue.name}</span>
                           </label>
                         );
                       })
@@ -826,7 +875,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
                 <span className="truncate">
                   {selectedCategories.length === 0 
                     ? 'Toutes les catégories' 
-                    : selectedCategories.join(', ')
+                    : `${selectedCategories.length} catégorie${selectedCategories.length > 1 ? 's' : ''} sélectionnée${selectedCategories.length > 1 ? 's' : ''}`
                   }
                 </span>
                 <svg className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${showCategoryDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -834,11 +883,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
                 </svg>
               </button>
 
-              <DropdownPortal 
-                targetRef={categoryButtonRef} 
-                isOpen={showCategoryDropdown}
-                onClose={() => setShowCategoryDropdown(false)}
-              >
+              <DropdownPortal targetRef={categoryButtonRef} isOpen={showCategoryDropdown}>
                 <div className="w-full bg-slate-800 border border-slate-600 rounded-xl shadow-2xl overflow-hidden">
                   <div className="sticky top-0 bg-slate-800 border-b border-slate-700 p-3">
                     <button
@@ -856,10 +901,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
                       allCategories.map(category => {
                         const isChecked = selectedCategories.includes(category);
                         return (
-                          <label 
-                            key={category} 
-                            className="flex items-center px-3 py-2 hover:bg-slate-700/30 rounded-lg cursor-pointer"
-                          >
+                          <label key={category} className="flex items-center px-3 py-2 hover:bg-slate-700/30 rounded-lg cursor-pointer">
                             <input
                               type="checkbox"
                               checked={isChecked}
@@ -872,7 +914,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
                               }}
                               className="w-4 h-4 text-emerald-500 bg-slate-700 border-slate-600 rounded focus:ring-emerald-500 focus:ring-2"
                             />
-                            <span className="ml-3 text-sm text-white select-none">{category}</span>
+                            <span className="ml-3 text-sm text-white">{category}</span>
                           </label>
                         );
                       })
@@ -935,12 +977,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
                   <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                   </svg>
-                  <span className="max-w-xs truncate">
-                    {selectedVenues.map(venueId => {
-                      const venue = allVenues.find(v => v.id === venueId);
-                      return venue?.name || '';
-                    }).filter(name => name).join(', ')}
-                  </span>
+                  {selectedVenues.length} venue{selectedVenues.length > 1 ? 's' : ''}
                 </span>
               )}
               
@@ -949,9 +986,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
                   <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                   </svg>
-                  <span className="max-w-xs truncate">
-                    {selectedCategories.join(', ')}
-                  </span>
+                  {selectedCategories.length} catégorie{selectedCategories.length > 1 ? 's' : ''}
                 </span>
               )}
               
@@ -1033,7 +1068,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
                         onClick={() => handleSort('venue')}
                         className="flex items-center space-x-1 text-xs font-medium text-slate-400 uppercase tracking-wider hover:text-white transition-colors duration-200"
                       >
-                        <span>Venue</span>
+                        <span>Venue / Salle</span>
                         {sortConfig?.key === 'venue' && (
                           <svg className={`w-4 h-4 ${sortConfig.direction === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
@@ -1362,9 +1397,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
             <CustomDateRangePicker
               startDate={customDateRange.start}
               endDate={customDateRange.end}
-              onDateChange={(start, end) => {
-                setCustomDateRange({ start, end });
-              }}
+              onDateChange={(start, end) => setCustomDateRange({ start, end })}
               onClose={() => {
                 setShowDatePicker(false);
                 if (!customDateRange.start || !customDateRange.end) {

@@ -36,7 +36,6 @@ interface Machine {
   id: string;
   name: string;
   status?: string;
-  isEnabled?: boolean; // Ajout du champ isEnabled
   [key: string]: any;
 }
 
@@ -230,54 +229,17 @@ function App() {
   const fetchMachinesData = async () => {
     try {
       console.log('🏭 Chargement des machines...');
-      let allMachines: any[] = [];
-      let nextUrl: string | null = `${API_BASE}/api/2.0/machines/`;
+      const url = `${API_BASE}/api/2.0/machines/`;
+      const response = await fetch(url, { headers });
       
-      // Récupérer toutes les machines (avec pagination si nécessaire)
-      while (nextUrl) {
-        const response = await fetch(nextUrl, { headers });
-        
-        if (!response.ok) {
-          throw new Error(`Erreur machines ${response.status}`);
-        }
-        
-        const data = await response.json();
-        allMachines = [...allMachines, ...(data.results || [])];
-        nextUrl = data.next;
+      if (!response.ok) {
+        throw new Error(`Erreur machines ${response.status}`);
       }
       
-      console.log('🏭 Machines récupérées:', allMachines.length);
-      
-      // Pour chaque machine, récupérer son statut enabled depuis l'endpoint devices
-      const enrichedMachines = await Promise.all(
-        allMachines.map(async (machine: any) => {
-          try {
-            const deviceUrl = `${API_BASE}/api/2.0/devices/?machineId=${machine.id}`;
-            const deviceResponse = await fetch(deviceUrl, { headers });
-            
-            if (deviceResponse.ok) {
-              const deviceData = await deviceResponse.json();
-              const device = deviceData.results?.[0];
-              
-              return {
-                ...machine,
-                isEnabled: device?.enabled !== undefined ? device.enabled : true
-              };
-            }
-          } catch (err) {
-            console.warn(`⚠️ Impossible de récupérer le device pour la machine ${machine.id}:`, err);
-          }
-          
-          // Si erreur ou pas de device trouvé, considérer la machine comme active par défaut
-          return {
-            ...machine,
-            isEnabled: true
-          };
-        })
-      );
-      
-      setMachines(enrichedMachines);
-      console.log('✅ Machines enrichies avec statut enabled');
+      const data = await response.json();
+      const machinesData = data.results || [];
+      setMachines(machinesData);
+      console.log('🏭 Machines récupérées:', machinesData.length);
       
     } catch (err) {
       console.error('❌ Erreur machines:', err);
@@ -298,7 +260,7 @@ function App() {
       console.log('🎯 Début du chargement progressif automatique par tranches de 500');
       
       try {
-        // Charger les machines (qui récupère aussi le statut enabled des devices)
+        // Charger les machines en parallèle
         await fetchMachinesData();
         
         // Démarrer le chargement progressif des ventes
@@ -383,7 +345,7 @@ function App() {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                 </svg>
-                <span>Ventes & Produits</span>
+                <span>Ventes</span>
               </button>
               
               <button
@@ -443,12 +405,12 @@ function App() {
             <div>
               <h1 className="text-2xl font-light text-white mb-1">
                 {activeView === 'dashboard' && 'Analytics Dashboard'}
-                {activeView === 'sales' && 'Ventes & Produits'}
+                {activeView === 'sales' && 'Détail des Ventes'}
                 {activeView === 'machines' && 'Gestion des Machines'}
               </h1>
               <p className="text-slate-400 text-sm">
                 {activeView === 'dashboard' && 'Vue d\'ensemble de votre activité Shape Eat'}
-                {activeView === 'sales' && 'Analyse complète des ventes et produits'}
+                {activeView === 'sales' && 'Historique complet des transactions'}
                 {activeView === 'machines' && 'Supervision de votre parc de machines'}
               </p>
             </div>

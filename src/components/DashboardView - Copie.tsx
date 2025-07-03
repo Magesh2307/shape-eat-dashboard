@@ -15,19 +15,8 @@ interface Sale {
   productSales?: Array<{
     vendStatus: string;
     totalPaid?: string;
-    isRefunded?: boolean;
     [key: string]: any;
   }>;
-  paymentStatusDisplay?: string;
-  location?: {
-    venue?: {
-      id: number;
-      name: string;
-    };
-    id?: number;
-    description?: string;
-  };
-  locationName?: string;
   [key: string]: any;
 }
 
@@ -52,29 +41,6 @@ interface DashboardViewProps {
   loadProgress: string;
   isLoading: boolean;
 }
-
-// ✅ FONCTION CENTRALISÉE pour valider une vente (CA réel)
-const isValidSaleForRevenue = (sale: Sale): boolean => {
-  // 1. Vérifier que la vente est confirmée/chargée
-  const isChargedOk = sale.charged === 'Yes';
-  
-  // 2. Vérifier qu'il y a au moins un produit avec vendStatus = Success
-  const hasSuccessfulProduct = sale.productSales && 
-    Array.isArray(sale.productSales) && 
-    sale.productSales.some(ps => ps.vendStatus === 'Success');
-  
-  // 3. Exclure les paiements refusés
-  const isNotDeclined = sale.paymentStatusDisplay !== 'DECLINED';
-  
-  // 4. Exclure les remboursements
-  const isNotRefunded = !sale.productSales || 
-    !sale.productSales.some(ps => ps.isRefunded === true);
-  
-  // 5. Au moins une condition de validation doit être vraie
-  const hasValidStatus = isChargedOk || hasSuccessfulProduct;
-  
-  return hasValidStatus && isNotDeclined && isNotRefunded;
-};
 
 const DashboardView: React.FC<DashboardViewProps> = ({ salesData, machines, onLoadAll, apiStats, loadProgress, isLoading }) => {
   // États pour les filtres de dates
@@ -182,19 +148,25 @@ const DashboardView: React.FC<DashboardViewProps> = ({ salesData, machines, onLo
       console.log(`🚫 DEBUG - Ventes exclues: ${declinedSales} refusées, ${refundedSales} remboursées`);
     }
 
-    // ✅ FILTRER LES VENTES VALIDES POUR LE CA RÉEL
-    const validCurrentSales = currentPeriodSales.filter(isValidSaleForRevenue);
-    const validPreviousSales = previousPeriodSales.filter(isValidSaleForRevenue);
-    
-    console.log(`💰 DEBUG - Ventes valides période actuelle: ${validCurrentSales.length}/${currentPeriodSales.length}`);
-    console.log(`💰 DEBUG - Ventes valides période précédente: ${validPreviousSales.length}/${previousPeriodSales.length}`);
-
     // Calculer les métriques par venue pour la période actuelle
     const currentVenueMetrics = new Map();
     const previousVenueMetrics = new Map();
 
-    // Traiter les ventes valides de la période actuelle
-    validCurrentSales.forEach(sale => {
+    // Traiter les ventes de la période actuelle
+    currentPeriodSales.forEach(sale => {
+      // ✅ CORRECTION VendLive : vérifier le statut selon la vraie logique VendLive
+      const isChargedOk = sale.charged === 'Yes';
+      const hasSuccessfulProduct = sale.productSales && Array.isArray(sale.productSales) && 
+                                  sale.productSales.some(ps => ps.vendStatus === 'Success');
+      
+      // ✅ NOUVEAU : Exclure les paiements refusés et remboursés
+      const isNotDeclined = sale.paymentStatusDisplay !== 'DECLINED';
+      const isNotRefunded = !sale.productSales || !sale.productSales.some(ps => ps.isRefunded === true);
+      
+      const isValidSale = (isChargedOk || hasSuccessfulProduct) && isNotDeclined && isNotRefunded;
+      
+      if (!sale || !isValidSale) return;
+      
       // ✅ CORRECTION : Afficher le nom du VENUE au lieu de la machine
       const venueId = sale.location?.venue?.id || sale.location?.id || sale.machine?.id || 'unknown';
       const venueName = sale.location?.venue?.name || sale.locationName || sale.location?.description || `Venue ${venueId}`;
@@ -220,8 +192,21 @@ const DashboardView: React.FC<DashboardViewProps> = ({ salesData, machines, onLo
       metric.orders += 1;
     });
 
-    // Traiter les ventes valides de la période précédente
-    validPreviousSales.forEach(sale => {
+    // Traiter les ventes de la période précédente
+    previousPeriodSales.forEach(sale => {
+      // ✅ CORRECTION VendLive : vérifier le statut selon la vraie logique VendLive
+      const isChargedOk = sale.charged === 'Yes';
+      const hasSuccessfulProduct = sale.productSales && Array.isArray(sale.productSales) && 
+                                  sale.productSales.some(ps => ps.vendStatus === 'Success');
+      
+      // ✅ NOUVEAU : Exclure les paiements refusés et remboursés
+      const isNotDeclined = sale.paymentStatusDisplay !== 'DECLINED';
+      const isNotRefunded = !sale.productSales || !sale.productSales.some(ps => ps.isRefunded === true);
+      
+      const isValidSale = (isChargedOk || hasSuccessfulProduct) && isNotDeclined && isNotRefunded;
+      
+      if (!sale || !isValidSale) return;
+      
       // ✅ CORRECTION : Afficher le nom du VENUE au lieu de la machine
       const venueId = sale.location?.venue?.id || sale.location?.id || sale.machine?.id || 'unknown';
       const venueName = sale.location?.venue?.name || sale.locationName || sale.location?.description || `Venue ${venueId}`;
@@ -297,27 +282,17 @@ const DashboardView: React.FC<DashboardViewProps> = ({ salesData, machines, onLo
     console.log('🏆 DEBUG - Top 5 venues calculé:', topMachines);
     console.log('📉 DEBUG - Bottom 5 venues calculé:', bottomMachines);
 
-    // ✅ CORRECTION : Calculer les stats globales AVEC le filtre CA réel
+    // Calculer les stats globales
     let totalSales = 0;
     let totalRevenue = 0;
     const statusCount = {};
     const machineSet = new Set();
 
-    // ✅ UTILISER SEULEMENT LES VENTES VALIDES pour le calcul du CA
-    for (const sale of validCurrentSales) {
-      if (!sale || !sale.productSales || !Array.isArray(sale.productSales)) {
-        // Pour les ventes sans productSales mais avec total/totalCharged
-        const amount = parseFloat(sale.total || sale.totalCharged || '0');
-        if (amount > 0) {
-          totalSales++;
-          totalRevenue += amount;
-          machineSet.add(sale.machine?.friendlyName);
-        }
-        continue;
-      }
+    for (const sale of currentPeriodSales) {
+      if (!sale || !sale.productSales || !Array.isArray(sale.productSales)) continue;
 
       for (const item of sale.productSales) {
-        const amount = parseFloat(item.totalPaid || sale.total || sale.totalCharged || '0');
+        const amount = parseFloat(item.totalPaid || 0);
         const status = item.vendStatus || "Inconnu";
 
         if (amount > 0) {
@@ -330,14 +305,24 @@ const DashboardView: React.FC<DashboardViewProps> = ({ salesData, machines, onLo
       }
     }
 
-    // ✅ Compter les ventes réussies selon la logique VendLive (avec exclusions)
-    const successfulSales = validCurrentSales.length;
+    // Compter les ventes réussies selon la logique VendLive (avec exclusions)
+    const successfulSales = currentPeriodSales.filter(sale => {
+      const isChargedOk = sale.charged === 'Yes';
+      const hasSuccessfulProduct = sale.productSales && 
+                                  Array.isArray(sale.productSales) && 
+                                  sale.productSales.some(ps => ps.vendStatus === 'Success');
+      
+      // ✅ NOUVEAU : Exclure les paiements refusés et remboursés
+      const isNotDeclined = sale.paymentStatusDisplay !== 'DECLINED';
+      const isNotRefunded = !sale.productSales || !sale.productSales.some(ps => ps.isRefunded === true);
+      
+      const amount = parseFloat(sale.total || sale.totalCharged || '0');
+      const hasAmount = !isNaN(amount) && amount > 0;
+      
+      return (isChargedOk || hasSuccessfulProduct) && isNotDeclined && isNotRefunded && hasAmount;
+    }).length;
 
     const avgBasket = totalSales > 0 ? totalRevenue / totalSales : 0;
-
-    console.log(`💰 RÉSUMÉ CA RÉEL:`);
-    console.log(`- CA période actuelle: ${totalRevenue.toFixed(2)}€ (${successfulSales} commandes valides)`);
-    console.log(`- Progression calculée sur les venues: voir top/bottom 5`);
 
     return {
       totalSales: currentPeriodSales.length,
@@ -450,7 +435,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ salesData, machines, onLo
               </svg>
             </div>
           </div>
-          <p className="text-emerald-100 text-sm font-medium mb-1">CHIFFRE D'AFFAIRES RÉEL</p>
+          <p className="text-emerald-100 text-sm font-medium mb-1">CHIFFRE D'AFFAIRES</p>
           <p className="text-2xl font-light">
             {filteredStats.totalRevenue.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
           </p>
@@ -464,9 +449,9 @@ const DashboardView: React.FC<DashboardViewProps> = ({ salesData, machines, onLo
               </svg>
             </div>
           </div>
-          <p className="text-blue-100 text-sm font-medium mb-1">VENTES VALIDES</p>
+          <p className="text-blue-100 text-sm font-medium mb-1">VENTES</p>
           <p className="text-2xl font-light">
-            {filteredStats.successfulSales.toLocaleString()}
+            {filteredStats.totalSales.toLocaleString()}
           </p>
         </div>
 
