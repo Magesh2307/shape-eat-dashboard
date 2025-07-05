@@ -1,14 +1,24 @@
-// scripts/sync-vendlive.ts
+// scripts/sync-vendlive.ts (début du fichier)
 import { createClient } from '@supabase/supabase-js';
 
-// Debug pour voir ce qui est reçu
-console.log('🔍 Variables d\'environnement:');
-console.log('SUPABASE_URL présent:', !!process.env.SUPABASE_URL);
+// Debug détaillé
+console.log('🔍 Debug variables d\'environnement:');
+console.log('SUPABASE_URL:', process.env.SUPABASE_URL);
+console.log('SUPABASE_URL length:', process.env.SUPABASE_URL?.length);
 console.log('SUPABASE_SERVICE_KEY présent:', !!process.env.SUPABASE_SERVICE_KEY);
+console.log('SUPABASE_SERVICE_KEY length:', process.env.SUPABASE_SERVICE_KEY?.length);
 
-// Configuration
+// Configuration avec validation
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://ojphshzuosbfbftpoigy.supabase.co';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qcGhzaHp1b3NmYmZ0cG9pZ3kiLCJyb2xlIjoic2VydmljZV9yb2xlIiwiaWF0IjoxNzUxNDUyNzcwLCJleHAiOjIwNjcwMjg3NzB9.ze3DvmYHGmDlOvBaE-SxCDaQwzAF6YoLsKjKPebXU4Q';
+
+// Validation
+if (!SUPABASE_URL || !SUPABASE_URL.startsWith('https://')) {
+  console.error('❌ SUPABASE_URL invalide:', SUPABASE_URL);
+  process.exit(1);
+}
+
+console.log('✅ URL valide:', SUPABASE_URL);
 
 // Créer le client Supabase
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
