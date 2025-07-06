@@ -1,4 +1,4 @@
-// scripts/sync-vendlive.ts (début du fichier)
+// scripts/sync-vendlive.ts (corrigé pour CA exact)
 import { createClient } from '@supabase/supabase-js';
 
 // Debug détaillé
@@ -30,6 +30,35 @@ const headers = {
   'Authorization': `Token ${API_TOKEN}`,
   'Content-Type': 'application/json',
 };
+
+// 🎯 NOUVELLE FONCTION: Validation des ventes comme VendLive
+function isValidSale(sale: any): boolean {
+  // Vérifier qu'il y a au moins un produit vendu avec succès
+  const products = sale.productSales || [];
+  const hasValidProduct = products.some((product: any) => 
+    product.vendStatus === 'Success' && !product.isRefunded
+  );
+  
+  return hasValidProduct && !sale.isRefunded;
+}
+
+// 🎯 NOUVELLE FONCTION: Calculer le montant exact comme VendLive
+function getValidSaleAmount(sale: any): number {
+  // Utiliser le champ "total" qui contient le CA TTC réel
+  const total = parseFloat(sale.total || '0');
+  
+  // Debug pour comprendre la structure
+  console.log('🔍 Sale debug:', {
+    id: sale.id,
+    total: sale.total,
+    totalCharged: sale.totalCharged,
+    discountTotal: sale.discountTotal,
+    charged: sale.charged,
+    isRefunded: sale.isRefunded
+  });
+  
+  return total;
+}
 
 // Fonction principale de synchronisation
 async function syncVendlive() {
@@ -84,8 +113,12 @@ async function syncVendlive() {
     
     console.log(`📦 ${allSales.length} nouvelles ventes trouvées`);
     
-    if (allSales.length === 0) {
-      console.log('✅ Aucune nouvelle vente à synchroniser');
+    // 🎯 FILTRAGE EXACT comme VendLive
+    const validSales = allSales.filter(isValidSale);
+    console.log(`✅ ${validSales.length} ventes valides (${allSales.length - validSales.length} filtrées)`);
+    
+    if (validSales.length === 0) {
+      console.log('✅ Aucune nouvelle vente valide à synchroniser');
       
       // Log même si pas de nouvelles ventes
       await supabase
@@ -103,9 +136,13 @@ async function syncVendlive() {
     // 3. Transformer et insérer dans Supabase
     const ordersToInsert = [];
     
-    for (const sale of allSales) {
+    for (const sale of validSales) {
       // Extraire les produits
       const products = sale.productSales || sale.products || [];
+      
+      // 🎯 MONTANT EXACT selon VendLive
+      const saleAmount = getValidSaleAmount(sale);
+      const discountAmount = parseFloat(sale.discountTotal || '0');
       
       // Si pas de produits, créer une ligne générique
       if (products.length === 0) {
@@ -118,16 +155,28 @@ async function syncVendlive() {
           product_name: 'Vente directe',
           product_category: 'Non catégorisé',
           quantity: 1,
-          price_ttc: parseFloat(sale.total || sale.totalCharged || '0'),
-          status: sale.charged === 'Yes' ? 'completed' : 'refunded',
+          price_ttc: saleAmount, // 🎯 MONTANT EXACT
+          status: 'completed', // Déjà filtré donc toujours completed
           created_at: sale.createdAt,
           client_email: sale.customerEmail || sale.customer?.email || null,
-          promo_code: sale.promoCode || null,
-          discount_amount: parseFloat(sale.discountAmount || '0')
+          promo_code: sale.voucherCode || null,
+          discount_amount: discountAmount
         });
       } else {
-        // Une ligne par produit
-        for (const product of products) {
+        // 🎯 CORRECTION IMPORTANTE: Distribuer le montant total proportionnellement
+        const validProducts = products.filter((product: any) => 
+          product.vendStatus === 'Success' && !product.isRefunded
+        );
+        
+        // Calculer le total des prix des produits valides
+        const totalProductPrices = validProducts.reduce((sum: number, product: any) => {
+          return sum + parseFloat(product.price || product.unitPrice || '0');
+        }, 0);
+        
+        // Ratio pour ajuster chaque produit
+        const ratio = totalProductPrices > 0 ? saleAmount / totalProductPrices : 1;
+        
+        for (const product of validProducts) {
           // Déterminer la catégorie
           let categoryName = 'Non catégorisé';
           if (typeof product.category === 'string') {
@@ -140,6 +189,10 @@ async function syncVendlive() {
               : product.productCategory.name || 'Non catégorisé';
           }
           
+          // 🎯 PRIX AJUSTÉ pour correspondre au total exact de VendLive
+          const productPrice = parseFloat(product.price || product.unitPrice || '0');
+          const adjustedPrice = productPrice * ratio;
+          
           ordersToInsert.push({
             vendlive_id: `${sale.id}_${product.productName || product.name}`,
             machine_id: sale.machine?.id || 0,
@@ -149,20 +202,24 @@ async function syncVendlive() {
             product_name: product.productName || product.name || 'Unknown',
             product_category: categoryName,
             quantity: parseInt(product.quantity || '1'),
-            price_ttc: parseFloat(product.price || product.unitPrice || '0'),
-            status: sale.charged === 'Yes' ? 'completed' : 'refunded',
+            price_ttc: adjustedPrice, // 🎯 PRIX AJUSTÉ
+            status: 'completed', // Déjà filtré donc toujours completed
             created_at: sale.createdAt,
             client_email: sale.customerEmail || sale.customer?.email || null,
-            promo_code: sale.promoCode || null,
-            discount_amount: parseFloat(sale.discountAmount || '0')
+            promo_code: sale.voucherCode || null,
+            discount_amount: parseFloat(product.discountValue || '0') * ratio // Réduction ajustée
           });
         }
       }
     }
     
-    // 4. Insérer par batch
     console.log(`💾 Insertion de ${ordersToInsert.length} lignes...`);
     
+    // 🎯 DEBUG: Afficher le total qui sera inséré
+    const totalAmount = ordersToInsert.reduce((acc, order) => acc + order.price_ttc, 0);
+    console.log(`💰 Total CA à insérer: ${totalAmount.toFixed(2)}€`);
+    
+    // 4. Insérer par batch
     for (let i = 0; i < ordersToInsert.length; i += 100) {
       const batch = ordersToInsert.slice(i, i + 100);
       
@@ -191,6 +248,8 @@ async function syncVendlive() {
       });
     
     console.log('🎉 Synchronisation terminée avec succès !');
+    console.log(`📊 ${validSales.length} ventes valides → ${ordersToInsert.length} lignes`);
+    console.log(`💰 Total synchronisé: ${totalAmount.toFixed(2)}€`);
     
   } catch (error) {
     console.error('❌ Erreur sync:', error);
