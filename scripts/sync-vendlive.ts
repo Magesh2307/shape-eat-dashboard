@@ -1,9 +1,9 @@
-// scripts/sync-vendlive.ts - Version corrigée pour CA exact comme VendLive
+// scripts/sync-vendlive.ts - Version finale corrigée
 import { createClient } from '@supabase/supabase-js';
 
 // Configuration
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://ojphshzuosbfbftpoigy.supabase.co';
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qcGhzaHp1b3NmYmZ0cG9pZ3kiLCJyb2xlIjoic2VydmljZV9yb2xlIiwiaWF0IjoxNzUxNDUyNzcwLCJleHAiOjIwNjcwMjg3NzB9.ze3DvmYHGmDlOvBaE-SxCDaQwzAF6YoLsKjKPebXU4Q';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qcGhzaHp1b3NiZmZ0cG9pZ3kiLCJyb2xlIjoic2VydmljZV9yb2xlIiwiaWF0IjoxNzUxNDUyNzcwLCJleHAiOjIwNjcwMjg3NzB9.ze3DvmYHGmDlOvBaE-SxCDaQwzAF6YoLsKjKPebXU4Q';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
@@ -15,7 +15,7 @@ const headers = {
   'Content-Type': 'application/json',
 };
 
-// 🚀 OPTIMISATION: Traitement par batch - TOUTES les ventes
+// Traitement par batch - TOUTES les ventes
 async function processBatch(sales: any[]): Promise<any[]> {
   return sales.map(sale => {
     const products = sale.productSales || [];
@@ -23,22 +23,27 @@ async function processBatch(sales: any[]): Promise<any[]> {
     const discountAmount = parseFloat(sale.discountTotal || '0');
     
     if (products.length === 0) {
-      // Si pas de produits, créer une ligne générique
       return [{
         vendlive_id: sale.id,
         machine_id: sale.machine?.id || 0,
         machine_name: sale.machine?.friendlyName || 'Unknown',
         venue_id: sale.location?.venue?.id || null,
         venue_name: sale.location?.venue?.name || 'Unknown',
+        transaction_id: sale.transaction?.id || sale.id || null,
         product_name: 'Vente directe',
         product_category: 'Non catégorisé',
         quantity: 1,
+        price_ht: null,
         price_ttc: saleAmount,
         status: sale.charged === 'Yes' ? 'completed' : 'failed',
-        created_at: sale.createdAt,
+        payment_method: sale.paymentMethod || null,
+        client_type: sale.customerType || null,
         client_email: sale.customerEmail || null,
+        discount_amount: discountAmount,
         promo_code: sale.voucherCode || null,
-        discount_amount: discountAmount
+        created_at: sale.createdAt,
+        synced_at: new Date().toISOString(),
+        raw_data: null
       }];
     }
     
@@ -53,23 +58,29 @@ async function processBatch(sales: any[]): Promise<any[]> {
       machine_name: sale.machine?.friendlyName || 'Unknown',
       venue_id: sale.location?.venue?.id || null,
       venue_name: sale.location?.venue?.name || 'Unknown',
+      transaction_id: sale.transaction?.id || sale.id || null,
       product_name: product.productName || product.name || 'Unknown',
       product_category: product.category?.name || product.productCategory?.name || 'Non catégorisé',
       quantity: parseInt(product.quantity || '1'),
+      price_ht: null, // Pas disponible dans l'API
       price_ttc: parseFloat(product.price || product.unitPrice || '0') * ratio,
       status: product.vendStatus === 'Success' && !product.isRefunded ? 'completed' : 'failed',
-      created_at: sale.createdAt,
+      payment_method: sale.paymentMethod || null,
+      client_type: sale.customerType || null,
       client_email: sale.customerEmail || null,
+      discount_amount: parseFloat(product.discountValue || '0') * ratio,
       promo_code: sale.voucherCode || null,
-      discount_amount: parseFloat(product.discountValue || '0') * ratio
+      created_at: sale.createdAt,
+      synced_at: new Date().toISOString(),
+      raw_data: null // Ou JSON.stringify(sale) si vous voulez garder tout
     }));
   }).flat();
 }
 
-// 🚀 SYNC RAPIDE PRINCIPALE
-async function syncVendliveFast() {
+// SYNC PRINCIPALE
+async function syncVendlive() {
   const startTime = Date.now();
-  console.log('🚀 Synchronisation COMPLÈTE VendLive → Supabase...');
+  console.log('🚀 Synchronisation VendLive → Supabase...');
   
   try {
     // 1. Récupérer la dernière sync
@@ -85,12 +96,13 @@ async function syncVendliveFast() {
     
     console.log(`📅 Dernière sync: ${lastSyncDate.toISOString()}`);
     
-    // 2. Récupérer TOUTES les nouvelles ventes (sans filtre)
+    // 2. Récupérer TOUTES les nouvelles ventes
     let allSales: any[] = [];
-    let nextUrl: string | null = `${API_BASE}/api/2.0/order-sales/?pageSize=500&orderBy=-created_at`;
+    // URL simple qui fonctionne
+    let nextUrl: string | null = `${API_BASE}/api/2.0/order-sales/?accountId=295&pageSize=100`;
     let pageCount = 0;
     
-    while (nextUrl && pageCount < 10) { // Limite de sécurité
+    while (nextUrl && pageCount < 20) { // Limite de sécurité augmentée
       pageCount++;
       console.log(`📄 Chargement page ${pageCount}...`);
       
@@ -119,8 +131,8 @@ async function syncVendliveFast() {
       nextUrl = data.next;
       
       // Si on a assez de ventes, arrêter
-      if (allSales.length > 2000) {
-        console.log('⚠️ Limite de 2000 ventes atteinte');
+      if (allSales.length > 5000) {
+        console.log('⚠️ Limite de 5000 ventes atteinte');
         break;
       }
     }
@@ -143,7 +155,13 @@ async function syncVendliveFast() {
     const ordersToInsert = await processBatch(allSales);
     console.log(`💾 Insertion de ${ordersToInsert.length} lignes...`);
     
-    // 4. Calculer les totaux pour vérification
+    // 4. Debug : afficher un exemple de données
+    if (ordersToInsert.length > 0) {
+      console.log('📋 Exemple de données à insérer:');
+      console.log(JSON.stringify(ordersToInsert[0], null, 2));
+    }
+    
+    // 5. Calculer les totaux pour vérification
     const totalByVenue = ordersToInsert.reduce((acc, order) => {
       if (order.status === 'completed') {
         const venue = order.venue_name;
@@ -157,29 +175,28 @@ async function syncVendliveFast() {
       console.log(`  - ${venue}: ${total.toFixed(2)}€`);
     });
     
-    // 5. Insertion par batch
+    // 6. Insertion par batch avec upsert
     const batchSize = 500;
     for (let i = 0; i < ordersToInsert.length; i += batchSize) {
       const batch = ordersToInsert.slice(i, i + batchSize);
+      
+      console.log(`📤 Insertion batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(ordersToInsert.length/batchSize)}...`);
       
       const { error } = await supabase
         .from('orders')
         .upsert(batch, {
           onConflict: 'vendlive_id',
-          ignoreDuplicates: false // Forcer la mise à jour
+          ignoreDuplicates: false
         });
       
       if (error) {
         console.error('❌ Erreur insertion batch:', error);
+        console.error('Détails:', JSON.stringify(error, null, 2));
         throw error;
       }
       
       console.log(`✅ Batch ${Math.floor(i/batchSize) + 1}: ${batch.length} lignes insérées`);
     }
-    
-    // 6. Mettre à jour les statistiques agrégées
-    await updateDailyStats();
-    await updateDashboardSummary();
     
     // 7. Log final
     await supabase.from('sync_logs').insert({
@@ -192,6 +209,13 @@ async function syncVendliveFast() {
     const duration = (Date.now() - startTime) / 1000;
     console.log(`🎉 Sync terminée en ${duration}s !`);
     console.log(`📊 ${allSales.length} ventes → ${ordersToInsert.length} lignes`);
+    
+    // 8. Optionnel : Mettre à jour les stats journalières
+    try {
+      await updateDailyStats();
+    } catch (err) {
+      console.warn('⚠️ Mise à jour des stats journalières échouée:', err.message);
+    }
     
   } catch (error) {
     console.error('❌ Erreur:', error);
@@ -228,7 +252,7 @@ async function updateDailyStats() {
   
   // Grouper par venue
   const statsByVenue = todayOrders.reduce((acc, order) => {
-    const key = `${order.venue_id}_${order.venue_name}`;
+    const key = `${order.venue_id}_${order.venue_name}_${order.machine_id}`;
     if (!acc[key]) {
       acc[key] = {
         date: today,
@@ -238,8 +262,15 @@ async function updateDailyStats() {
         machine_name: order.machine_name,
         total_orders: 0,
         successful_orders: 0,
+        refunded_orders: 0,
+        total_revenue_ht: 0,
         total_revenue_ttc: 0,
-        total_discount: 0
+        total_discount: 0,
+        unique_products: new Set(),
+        subscriber_orders: 0,
+        non_subscriber_orders: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
     }
     
@@ -249,30 +280,39 @@ async function updateDailyStats() {
       acc[key].total_revenue_ttc += order.price_ttc || 0;
       acc[key].total_discount += order.discount_amount || 0;
     }
+    if (order.status === 'refunded') {
+      acc[key].refunded_orders++;
+    }
+    if (order.product_name) {
+      acc[key].unique_products.add(order.product_name);
+    }
     
     return acc;
   }, {} as Record<string, any>);
   
-  const statsToInsert = Object.values(statsByVenue);
+  // Convertir pour insertion
+  const statsToInsert = Object.values(statsByVenue).map(stat => ({
+    ...stat,
+    unique_products: stat.unique_products.size
+  }));
   
   if (statsToInsert.length > 0) {
-    await supabase.from('daily_stats').insert(statsToInsert);
-    console.log(`✅ ${statsToInsert.length} stats journalières mises à jour`);
-  }
-}
-
-// Mettre à jour le dashboard summary
-async function updateDashboardSummary() {
-  console.log('📊 Mise à jour du dashboard summary...');
-  
-  const { data: summary } = await supabase.rpc('calculate_dashboard_summary');
-  
-  if (summary) {
-    console.log('✅ Dashboard summary mis à jour:', summary);
+    const { error } = await supabase.from('daily_stats').insert(statsToInsert);
+    if (error) {
+      console.error('❌ Erreur mise à jour daily_stats:', error);
+    } else {
+      console.log(`✅ ${statsToInsert.length} stats journalières mises à jour`);
+    }
   }
 }
 
 // Lancer la synchronisation
-syncVendliveFast()
-  .then(() => process.exit(0))
-  .catch(() => process.exit(1));
+syncVendlive()
+  .then(() => {
+    console.log('✅ Script terminé avec succès');
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error('❌ Erreur fatale:', err);
+    process.exit(1);
+  });
