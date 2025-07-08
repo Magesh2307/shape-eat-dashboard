@@ -24,12 +24,12 @@ async function processBatch(sales: any[]): Promise<any[]> {
     
     if (products.length === 0) {
       return [{
-        vendlive_id: sale.id,
+        vendlive_id: String(sale.id), // Convertir en string
         machine_id: sale.machine?.id || 0,
         machine_name: sale.machine?.friendlyName || 'Unknown',
         venue_id: sale.location?.venue?.id || null,
         venue_name: sale.location?.venue?.name || 'Unknown',
-        transaction_id: sale.transaction?.id || sale.id || null,
+        transaction_id: sale.transaction?.id ? String(sale.transaction.id) : String(sale.id),
         product_name: 'Vente directe',
         product_category: 'Non catégorisé',
         quantity: 1,
@@ -58,7 +58,7 @@ async function processBatch(sales: any[]): Promise<any[]> {
       machine_name: sale.machine?.friendlyName || 'Unknown',
       venue_id: sale.location?.venue?.id || null,
       venue_name: sale.location?.venue?.name || 'Unknown',
-      transaction_id: sale.transaction?.id || sale.id || null,
+      transaction_id: sale.transaction?.id ? String(sale.transaction.id) : String(sale.id),
       product_name: product.productName || product.name || 'Unknown',
       product_category: product.category?.name || product.productCategory?.name || 'Non catégorisé',
       quantity: parseInt(product.quantity || '1'),
@@ -99,41 +99,54 @@ async function syncVendlive() {
     // 2. Récupérer TOUTES les nouvelles ventes
     let allSales: any[] = [];
     // URL simple qui fonctionne
-    let nextUrl: string | null = `${API_BASE}/api/2.0/order-sales/?accountId=295&pageSize=100`;
+    let nextUrl: string | null = `${API_BASE}/api/2.0/order-sales/?accountId=295&pageSize=50`;
     let pageCount = 0;
     
     while (nextUrl && pageCount < 20) { // Limite de sécurité augmentée
       pageCount++;
       console.log(`📄 Chargement page ${pageCount}...`);
       
-      const response = await fetch(nextUrl, { headers });
-      
-      if (!response.ok) {
-        throw new Error(`Erreur API: ${response.status}`);
+      // Pause entre les requêtes pour éviter ECONNRESET
+      if (pageCount > 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Pause 1 seconde
       }
       
-      const data = await response.json();
-      const pageSales = data.results || [];
-      
-      // Filtrer uniquement par date
-      const newSales = pageSales.filter((sale: any) => 
-        new Date(sale.createdAt) > lastSyncDate
-      );
-      
-      allSales = [...allSales, ...newSales];
-      
-      // Si on trouve des ventes déjà synchronisées, arrêter
-      if (newSales.length < pageSales.length) {
-        console.log('✅ Trouvé des ventes déjà synchronisées, arrêt');
-        break;
-      }
-      
-      nextUrl = data.next;
-      
-      // Si on a assez de ventes, arrêter
-      if (allSales.length > 5000) {
-        console.log('⚠️ Limite de 5000 ventes atteinte');
-        break;
+      try {
+        const response = await fetch(nextUrl, { headers });
+        
+        if (!response.ok) {
+          throw new Error(`Erreur API: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        const pageSales = data.results || [];
+        
+        // Filtrer uniquement par date
+        const newSales = pageSales.filter((sale: any) => 
+          new Date(sale.createdAt) > lastSyncDate
+        );
+        
+        allSales = [...allSales, ...newSales];
+        
+        // Si on trouve des ventes déjà synchronisées, arrêter
+        if (newSales.length < pageSales.length) {
+          console.log('✅ Trouvé des ventes déjà synchronisées, arrêt');
+          break;
+        }
+        
+        nextUrl = data.next;
+        
+        // Si on a assez de ventes, arrêter
+        if (allSales.length > 5000) {
+          console.log('⚠️ Limite de 5000 ventes atteinte');
+          break;
+        }
+      } catch (fetchError) {
+        if (fetchError.cause?.code === 'ECONNRESET' && pageCount > 1) {
+          console.warn(`⚠️ Connexion reset page ${pageCount}, on continue avec les données récupérées`);
+          break; // Continuer avec ce qu'on a
+        }
+        throw fetchError; // Relancer l'erreur si c'est autre chose
       }
     }
     
@@ -145,7 +158,10 @@ async function syncVendlive() {
         sync_type: 'vendlive_orders',
         records_synced: 0,
         status: 'completed',
-        completed_at: new Date().toISOString()
+        completed_at: new Date().toISOString(),
+        started_at: new Date(startTime).toISOString(),
+        last_vendlive_id: null,
+        metadata: null
       });
       console.log(`⏱️ Durée: ${(Date.now() - startTime) / 1000}s`);
       return;
@@ -180,11 +196,24 @@ async function syncVendlive() {
     for (let i = 0; i < ordersToInsert.length; i += batchSize) {
       const batch = ordersToInsert.slice(i, i + batchSize);
       
-      console.log(`📤 Insertion batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(ordersToInsert.length/batchSize)}...`);
+      // Filtrer les lignes avec status 'failed'
+      const batchFiltered = batch.filter(row => row.status !== 'failed');
+      const excluded = batch.length - batchFiltered.length;
+      
+      if (excluded > 0) {
+        console.log(`⚠️ Exclusion de ${excluded} lignes avec status 'failed'`);
+      }
+      
+      if (batchFiltered.length === 0) {
+        console.log(`⏭️ Batch ${Math.floor(i/batchSize) + 1} ignoré (toutes les lignes failed)`);
+        continue;
+      }
+      
+      console.log(`📤 Insertion batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(ordersToInsert.length/batchSize)}: ${batchFiltered.length} lignes...`);
       
       const { error } = await supabase
         .from('orders')
-        .upsert(batch, {
+        .upsert(batchFiltered, {
           onConflict: 'vendlive_id',
           ignoreDuplicates: false
         });
@@ -195,15 +224,19 @@ async function syncVendlive() {
         throw error;
       }
       
-      console.log(`✅ Batch ${Math.floor(i/batchSize) + 1}: ${batch.length} lignes insérées`);
+      console.log(`✅ Batch ${Math.floor(i/batchSize) + 1}: ${batchFiltered.length} lignes insérées`);
     }
     
-    // 7. Log final
+    // 7. Log final - compter seulement les lignes réellement insérées
+    const totalInserted = ordersToInsert.filter(row => row.status !== 'failed').length;
     await supabase.from('sync_logs').insert({
       sync_type: 'vendlive_orders',
-      records_synced: ordersToInsert.length,
+      records_synced: totalInserted,
       status: 'completed',
-      completed_at: new Date().toISOString()
+      completed_at: new Date().toISOString(),
+      started_at: new Date(startTime).toISOString(),
+      last_vendlive_id: null,
+      metadata: null
     });
     
     const duration = (Date.now() - startTime) / 1000;
@@ -223,7 +256,11 @@ async function syncVendlive() {
       sync_type: 'vendlive_orders',
       status: 'failed',
       error_message: error.message,
-      completed_at: new Date().toISOString()
+      completed_at: new Date().toISOString(),
+      started_at: new Date(startTime).toISOString(),
+      records_synced: 0,
+      last_vendlive_id: null,
+      metadata: null
     });
     throw error;
   }
