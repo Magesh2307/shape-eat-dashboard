@@ -303,17 +303,32 @@ async function updateSalesTable(vendliveSales: any[]) {
   console.log('📊 Mise à jour de la table sales...');
   
   const salesToUpsert = vendliveSales.map(sale => {
-    // ✅ Vérifier si au moins un produit est Success
-    const hasSuccessfulProduct = sale.productSales?.some(
-      (ps: any) => ps.vendStatus === 'Success' && !ps.isRefunded
-    );
+    // ✅ Calculer le total depuis les productSales avec totalPaid
+    let totalTTC = 0;
+    let discountTTC = 0;
+    let hasSuccessfulProduct = false;
     
-    // ✅ Si au moins 1 Success, on compte TOUT le CA (totalCharged)
-    const totalTTC = hasSuccessfulProduct ? parseFloat(sale.totalCharged || '0') : 0;
-    const discountTTC = hasSuccessfulProduct ? parseFloat(sale.discountTotal || '0') : 0;
-    const totalHT = hasSuccessfulProduct ? (totalTTC / 1.055) : 0;
+    // Parcourir tous les produits pour calculer le total
+    if (sale.productSales && sale.productSales.length > 0) {
+      sale.productSales.forEach((product: any) => {
+        if (product.vendStatus === 'Success' && !product.isRefunded) {
+          hasSuccessfulProduct = true;
+          totalTTC += parseFloat(product.totalPaid || '0'); // ✅ Utiliser totalPaid
+          discountTTC += parseFloat(product.discountValue || '0');
+        }
+        // Si vendStatus = 'Failure', on ne compte pas ce produit
+      });
+    } else {
+      // Pas de productSales, utiliser les valeurs globales si Success
+      if (sale.charged === 'Yes') {
+        hasSuccessfulProduct = true;
+        totalTTC = parseFloat(sale.totalCharged || '0'); // Fallback
+      }
+    }
     
-    // ✅ Déterminer le statut global
+    const totalHT = totalTTC / 1.055; // TVA 5.5%
+    
+    // Déterminer le statut global
     let status = 'failed';
     if (hasSuccessfulProduct) {
       status = 'completed';
@@ -330,11 +345,11 @@ async function updateSalesTable(vendliveSales: any[]) {
       machine_name: sale.machine?.friendlyName || 'Unknown',
       customer_email: sale.customerEmail || sale.customer?.email || null,
       promo_code: sale.voucherCode || null,
-      total_ttc: totalTTC, // ✅ TOUT le CA si au moins 1 Success
+      total_ttc: totalTTC, // ✅ Somme des totalPaid avec vendStatus Success
       total_ht: totalHT.toFixed(2),
       discount_amount: discountTTC,
       nb_products: sale.productSales?.length || 1,
-      status: status, // ✅ Status basé sur la logique VendLive
+      status: status,
       payment_status: sale.paymentStatusDisplay || sale.paymentStatus,
       created_at: sale.createdAt,
       updated_at: new Date().toISOString()
