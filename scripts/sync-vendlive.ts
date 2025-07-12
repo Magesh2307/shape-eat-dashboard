@@ -243,18 +243,18 @@ const { error } = await supabase
       
       console.log(`📤 Insertion batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(ordersToInsert.length/batchSize)}: ${batchFiltered.length} lignes...`);
       
-      const { error } = await supabase
-        .from('orders')
-        .upsert(batchFiltered, {
-          onConflict: 'vendlive_id',
-          ignoreDuplicates: false
-        });
-      
-      if (error) {
-        console.error('❌ Erreur insertion batch:', error);
-        console.error('Détails:', JSON.stringify(error, null, 2));
-        throw error;
-      }
+     const { error: insertError } = await supabase
+  .from('orders')
+  .upsert(batch, {
+    onConflict: 'vendlive_id',
+    ignoreDuplicates: false
+  });
+
+if (insertError) {
+  console.error('❌ Erreur insertion batch:', insertError);
+  console.error('Détails:', JSON.stringify(insertError, null, 2));
+  throw insertError;
+}
       
       console.log(`✅ Batch ${Math.floor(i/batchSize) + 1}: ${batchFiltered.length} lignes insérées`);
     }
