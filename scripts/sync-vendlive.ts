@@ -1,4 +1,4 @@
-// scripts/sync-vendlive.ts - Version avec logique VendLive correcte
+// scripts/sync-vendlive.ts - Version corrigée avec tous les produits
 import { createClient } from '@supabase/supabase-js';
 
 // Configuration
@@ -19,8 +19,6 @@ const headers = {
 async function processBatch(sales: any[]): Promise<any[]> {
   return sales.map(sale => {
     const products = sale.productSales || [];
-    
-    // ✅ Pour la vente globale, utiliser totalCharged comme CA TTC
     const saleTotalTTC = parseFloat(sale.totalCharged || '0');
     const saleDiscountTTC = parseFloat(sale.discountTotal || '0');
     
@@ -35,13 +33,13 @@ async function processBatch(sales: any[]): Promise<any[]> {
         product_name: 'Vente directe',
         product_category: 'Non catégorisé',
         quantity: 1,
-        price_ht: 0, // Pas de détail produit
-        price_ttc: saleTotalTTC, // ✅ totalCharged = CA TTC
+        price_ht: 0,
+        price_ttc: saleTotalTTC,
         status: sale.charged === 'Yes' ? 'completed' : 'failed',
         payment_method: sale.paymentMethod || null,
         client_type: sale.customerType || null,
         client_email: sale.customerEmail || null,
-        discount_amount: saleDiscountTTC, // ✅ Discount total TTC
+        discount_amount: saleDiscountTTC,
         promo_code: sale.voucherCode || null,
         created_at: sale.createdAt,
         synced_at: new Date().toISOString(),
@@ -50,48 +48,47 @@ async function processBatch(sales: any[]): Promise<any[]> {
     }
     
     // Pour chaque produit, utiliser les champs VendLive
-// Pour chaque produit, utiliser les champs VendLive
-return products.map((product: any) => {
-  // ✅ Utiliser les champs VendLive corrects
-  const totalPaidTTC = parseFloat(product.totalPaid || '0');
-  const discountTTC = parseFloat(product.discountValue || '0');
-  const vatAmount = parseFloat(product.vatAmount || '0');
-  const netAmountHT = parseFloat(product.netAmount || '0');
-  const vatRate = parseFloat(product.vatRate || '5.5');
-  
-  // ✅ IMPORTANT : Déterminer le statut correct
-  let status = 'failed'; // Par défaut
-  if (product.vendStatus === 'Success' && !product.isRefunded) {
-    status = 'completed';
-  } else if (product.isRefunded) {
-    status = 'refunded';
-  } else if (product.vendStatus === 'Failure' || product.vendStatus === 'Failed') {
-    status = 'failed';
-  }
-  
-  return {
-    vendlive_id: `${sale.id}_${product.productName || product.name || product.id}`,
-    machine_id: sale.machine?.id || 0,
-    machine_name: sale.machine?.friendlyName || 'Unknown',
-    venue_id: sale.location?.venue?.id || null,
-    venue_name: sale.location?.venue?.name || 'Unknown',
-    transaction_id: sale.transaction?.id ? String(sale.transaction.id) : String(sale.id),
-    product_name: product.productName || product.name || 'Unknown',
-    product_category: product.category?.name || product.productCategory?.name || 'Non catégorisé',
-    quantity: parseInt(product.quantity || '1'),
-    price_ht: netAmountHT,
-    price_ttc: totalPaidTTC,
-    status: status, // ✅ Statut correctement défini
-    payment_method: sale.paymentMethod || null,
-    client_type: sale.customerType || null,
-    client_email: sale.customerEmail || null,
-    discount_amount: discountTTC,
-    promo_code: sale.voucherCode || null,
-    created_at: sale.createdAt,
-    synced_at: new Date().toISOString(),
-    raw_data: null
-  };
-});
+    return products.map((product: any) => {
+      // ✅ Utiliser les champs VendLive corrects
+      const totalPaidTTC = parseFloat(product.totalPaid || '0');
+      const discountTTC = parseFloat(product.discountValue || '0');
+      const vatAmount = parseFloat(product.vatAmount || '0');
+      const netAmountHT = parseFloat(product.netAmount || '0');
+      const vatRate = parseFloat(product.vatRate || '5.5');
+      
+      // ✅ IMPORTANT : Déterminer le statut correct
+      let status = 'failed'; // Par défaut
+      if (product.vendStatus === 'Success' && !product.isRefunded) {
+        status = 'completed';
+      } else if (product.isRefunded) {
+        status = 'refunded';
+      } else if (product.vendStatus === 'Failure' || product.vendStatus === 'Failed') {
+        status = 'failed';
+      }
+      
+      return {
+        vendlive_id: `${sale.id}_${product.productName || product.name || product.id}`,
+        machine_id: sale.machine?.id || 0,
+        machine_name: sale.machine?.friendlyName || 'Unknown',
+        venue_id: sale.location?.venue?.id || null,
+        venue_name: sale.location?.venue?.name || 'Unknown',
+        transaction_id: sale.transaction?.id ? String(sale.transaction.id) : String(sale.id),
+        product_name: product.productName || product.name || 'Unknown',
+        product_category: product.category?.name || product.productCategory?.name || 'Non catégorisé',
+        quantity: parseInt(product.quantity || '1'),
+        price_ht: netAmountHT,
+        price_ttc: totalPaidTTC,
+        status: status, // ✅ Statut correctement défini
+        payment_method: sale.paymentMethod || null,
+        client_type: sale.customerType || null,
+        client_email: sale.customerEmail || null,
+        discount_amount: discountTTC,
+        promo_code: sale.voucherCode || null,
+        created_at: sale.createdAt,
+        synced_at: new Date().toISOString(),
+        raw_data: null
+      };
+    });
   }).flat();
 }
 
@@ -217,46 +214,28 @@ async function syncVendlive() {
       console.log(`    Discounts: ${data.discount.toFixed(2)}€`);
     });
     
-    // 6. Insertion par batch
+    // 6. Insertion par batch avec upsert - SANS FILTRAGE
     const batchSize = 500;
     for (let i = 0; i < ordersToInsert.length; i += batchSize) {
       const batch = ordersToInsert.slice(i, i + batchSize);
       
-      //const batchFiltered = batch.filter(row => row.status !== 'failed');
-      //const excluded = batch.length - batchFiltered.length;
-      //
-      //if (excluded > 0) {
-      //console.log(`⚠️ Exclusion de ${excluded} lignes avec status 'failed'`);
-      //}
-	  // Utiliser directement batch au lieu de batchFiltered
-const { error } = await supabase
-  .from('orders')
-  .upsert(batch, {  // ✅ batch au lieu de batchFiltered
-    onConflict: 'vendlive_id',
-    ignoreDuplicates: false
-  });
+      // ✅ NE PLUS FILTRER - on garde TOUS les produits (Success + Failed)
+      console.log(`📤 Insertion batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(ordersToInsert.length/batchSize)}: ${batch.length} lignes...`);
       
-      if (batchFiltered.length === 0) {
-        console.log(`⏭️ Batch ${Math.floor(i/batchSize) + 1} ignoré (toutes les lignes failed)`);
-        continue;
+      const { error: insertError } = await supabase
+        .from('orders')
+        .upsert(batch, {
+          onConflict: 'vendlive_id',
+          ignoreDuplicates: false
+        });
+      
+      if (insertError) {
+        console.error('❌ Erreur insertion batch:', insertError);
+        console.error('Détails:', JSON.stringify(insertError, null, 2));
+        throw insertError;
       }
       
-      console.log(`📤 Insertion batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(ordersToInsert.length/batchSize)}: ${batchFiltered.length} lignes...`);
-      
-     const { error: insertError } = await supabase
-  .from('orders')
-  .upsert(batch, {
-    onConflict: 'vendlive_id',
-    ignoreDuplicates: false
-  });
-
-if (insertError) {
-  console.error('❌ Erreur insertion batch:', insertError);
-  console.error('Détails:', JSON.stringify(insertError, null, 2));
-  throw insertError;
-}
-      
-      console.log(`✅ Batch ${Math.floor(i/batchSize) + 1}: ${batchFiltered.length} lignes insérées`);
+      console.log(`✅ Batch ${Math.floor(i/batchSize) + 1}: ${batch.length} lignes insérées`);
     }
     
     // 7. Mise à jour de la table sales
@@ -266,8 +245,8 @@ if (insertError) {
       console.warn('⚠️ Mise à jour de la table sales échouée:', err.message);
     }
     
-    // 8. Log final
-    const totalInserted = ordersToInsert.filter(row => row.status !== 'failed').length;
+    // 8. Log final - compter toutes les lignes insérées
+    const totalInserted = ordersToInsert.length; // ✅ Plus de filtre
     await supabase.from('sync_logs').insert({
       sync_type: 'vendlive_orders',
       records_synced: totalInserted,
@@ -305,13 +284,14 @@ if (insertError) {
   }
 }
 
-// Mise à jour de la table sales avec la logique correcte
+// Mise à jour de la table sales avec la logique VendLive correcte
 async function updateSalesTable(vendliveSales: any[]) {
   console.log('📊 Mise à jour de la table sales...');
   
   const salesToUpsert = vendliveSales.map(sale => {
     // ✅ Calculer le total depuis les productSales avec totalPaid
     let totalTTC = 0;
+    let totalHT = 0;
     let discountTTC = 0;
     let hasSuccessfulProduct = false;
     
@@ -320,7 +300,8 @@ async function updateSalesTable(vendliveSales: any[]) {
       sale.productSales.forEach((product: any) => {
         if (product.vendStatus === 'Success' && !product.isRefunded) {
           hasSuccessfulProduct = true;
-          totalTTC += parseFloat(product.totalPaid || '0'); // ✅ Utiliser totalPaid
+          totalTTC += parseFloat(product.totalPaid || '0');
+          totalHT += parseFloat(product.netAmount || '0');
           discountTTC += parseFloat(product.discountValue || '0');
         }
         // Si vendStatus = 'Failure', on ne compte pas ce produit
@@ -329,11 +310,11 @@ async function updateSalesTable(vendliveSales: any[]) {
       // Pas de productSales, utiliser les valeurs globales si Success
       if (sale.charged === 'Yes') {
         hasSuccessfulProduct = true;
-        totalTTC = parseFloat(sale.totalCharged || '0'); // Fallback
+        totalTTC = parseFloat(sale.totalCharged || '0');
+        totalHT = totalTTC / 1.055;
+        discountTTC = parseFloat(sale.discountTotal || '0');
       }
     }
-    
-    const totalHT = totalTTC / 1.055; // TVA 5.5%
     
     // Déterminer le statut global
     let status = 'failed';
@@ -353,7 +334,7 @@ async function updateSalesTable(vendliveSales: any[]) {
       customer_email: sale.customerEmail || sale.customer?.email || null,
       promo_code: sale.voucherCode || null,
       total_ttc: totalTTC, // ✅ Somme des totalPaid avec vendStatus Success
-      total_ht: totalHT.toFixed(2),
+      total_ht: totalHT,
       discount_amount: discountTTC,
       nb_products: sale.productSales?.length || 1,
       status: status,
