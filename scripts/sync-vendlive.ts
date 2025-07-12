@@ -222,12 +222,19 @@ async function syncVendlive() {
     for (let i = 0; i < ordersToInsert.length; i += batchSize) {
       const batch = ordersToInsert.slice(i, i + batchSize);
       
-      const batchFiltered = batch.filter(row => row.status !== 'failed');
-      const excluded = batch.length - batchFiltered.length;
-      
-      if (excluded > 0) {
-        console.log(`⚠️ Exclusion de ${excluded} lignes avec status 'failed'`);
-      }
+      //const batchFiltered = batch.filter(row => row.status !== 'failed');
+      //const excluded = batch.length - batchFiltered.length;
+      //
+      //if (excluded > 0) {
+      //console.log(`⚠️ Exclusion de ${excluded} lignes avec status 'failed'`);
+      //}
+	  // Utiliser directement batch au lieu de batchFiltered
+const { error } = await supabase
+  .from('orders')
+  .upsert(batch, {  // ✅ batch au lieu de batchFiltered
+    onConflict: 'vendlive_id',
+    ignoreDuplicates: false
+  });
       
       if (batchFiltered.length === 0) {
         console.log(`⏭️ Batch ${Math.floor(i/batchSize) + 1} ignoré (toutes les lignes failed)`);
