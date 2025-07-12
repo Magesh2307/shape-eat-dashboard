@@ -303,13 +303,23 @@ async function updateSalesTable(vendliveSales: any[]) {
   console.log('📊 Mise à jour de la table sales...');
   
   const salesToUpsert = vendliveSales.map(sale => {
-    // ✅ Utiliser totalCharged pour le CA TTC
-    const totalTTC = parseFloat(sale.totalCharged || '0');
-    const discountTTC = parseFloat(sale.discountTotal || '0');
+    // ✅ Vérifier si au moins un produit est Success
+    const hasSuccessfulProduct = sale.productSales?.some(
+      (ps: any) => ps.vendStatus === 'Success' && !ps.isRefunded
+    );
     
-    // Calculer le HT approximatif (si pas fourni par l'API)
-    // Prix HT = Prix TTC / (1 + TVA)
-    const totalHT = totalTTC / 1.055; // TVA 5.5%
+    // ✅ Si au moins 1 Success, on compte TOUT le CA (totalCharged)
+    const totalTTC = hasSuccessfulProduct ? parseFloat(sale.totalCharged || '0') : 0;
+    const discountTTC = hasSuccessfulProduct ? parseFloat(sale.discountTotal || '0') : 0;
+    const totalHT = hasSuccessfulProduct ? (totalTTC / 1.055) : 0;
+    
+    // ✅ Déterminer le statut global
+    let status = 'failed';
+    if (hasSuccessfulProduct) {
+      status = 'completed';
+    } else if (sale.productSales?.every((ps: any) => ps.isRefunded)) {
+      status = 'refunded';
+    }
     
     return {
       vendlive_id: String(sale.id),
@@ -320,12 +330,11 @@ async function updateSalesTable(vendliveSales: any[]) {
       machine_name: sale.machine?.friendlyName || 'Unknown',
       customer_email: sale.customerEmail || sale.customer?.email || null,
       promo_code: sale.voucherCode || null,
-      total_ttc: totalTTC, // ✅ totalCharged = CA TTC
-      total_ht: totalHT.toFixed(2), // ✅ Calculé depuis TTC
-      discount_amount: discountTTC, // ✅ discountTotal = discount TTC
+      total_ttc: totalTTC, // ✅ TOUT le CA si au moins 1 Success
+      total_ht: totalHT.toFixed(2),
+      discount_amount: discountTTC,
       nb_products: sale.productSales?.length || 1,
-      status: sale.productSales?.some((ps: any) => ps.vendStatus === 'Success' && !ps.isRefunded) ? 'completed' : 
-              sale.productSales?.some((ps: any) => ps.isRefunded) ? 'refunded' : 'failed',
+      status: status, // ✅ Status basé sur la logique VendLive
       payment_status: sale.paymentStatusDisplay || sale.paymentStatus,
       created_at: sale.createdAt,
       updated_at: new Date().toISOString()
