@@ -19,7 +19,7 @@ const headers = {
 async function processBatch(sales: any[]): Promise<any[]> {
   return sales.map(sale => {
     const products = sale.productSales || [];
-    const saleAmount = parseFloat(sale.total || '0');
+    const saleAmount = parseFloat(sale.totalCharged || '0');
     const discountAmount = parseFloat(sale.discountTotal || '0');
     
     if (products.length === 0) {
@@ -34,7 +34,7 @@ async function processBatch(sales: any[]): Promise<any[]> {
         product_category: 'Non catégorisé',
         quantity: 1,
         price_ht: null,
-        price_ttc: saleAmount,
+        price_ttc: parseFloat(sale.totalCharged || '0'),
         status: sale.charged === 'Yes' ? 'completed' : 'failed',
         payment_method: sale.paymentMethod || null,
         client_type: sale.customerType || null,
@@ -90,9 +90,7 @@ async function syncVendlive() {
       .order('created_at', { ascending: false })
       .limit(1);
     
-    const lastSyncDate = lastSync?.[0]?.created_at 
-      ? new Date(lastSync[0].created_at)
-      : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // 7 jours max
+	const lastSyncDate = new Date('2025-01-01')
     
     console.log(`📅 Dernière sync: ${lastSyncDate.toISOString()}`);
     
