@@ -1,4 +1,4 @@
-// scripts/sync-vendlive.ts - Version corrigée avec tous les produits
+// scripts/sync-vendlive.ts - Version avec synchronisation historique complète
 import { createClient } from '@supabase/supabase-js';
 
 // Configuration
@@ -14,6 +14,12 @@ const headers = {
   'Authorization': `Token ${API_TOKEN}`,
   'Content-Type': 'application/json',
 };
+
+// ⚠️ PARAMÈTRES DE SYNCHRONISATION - OPTIMISÉS POUR RÉCUPÉRER TOUT
+const SYNC_MODE = process.env.SYNC_MODE || 'full'; // 'full' pour tout récupérer
+const SYNC_START_DATE = process.env.SYNC_START_DATE || '2023-01-01'; // Date de début pour sync complète
+const MAX_PAGES = parseInt(process.env.MAX_PAGES || '2000'); // Limite de pages à récupérer (augmentée)
+const PAGE_SIZE = parseInt(process.env.PAGE_SIZE || '100'); // Taille de page (augmentée)
 
 // Traitement par batch avec la logique VendLive correcte
 async function processBatch(sales: any[]): Promise<any[]> {
@@ -92,82 +98,188 @@ async function processBatch(sales: any[]): Promise<any[]> {
   }).flat();
 }
 
-// SYNC PRINCIPALE
+// SYNC PRINCIPALE - OPTIMISÉE POUR RÉCUPÉRER TOUT
 async function syncVendlive() {
   const startTime = Date.now();
   console.log('🚀 Synchronisation VendLive → Supabase...');
+  console.log(`📋 Mode: ${SYNC_MODE}`);
+  console.log(`📄 Taille de page: ${PAGE_SIZE}`);
+  console.log(`📊 Limite de pages: ${MAX_PAGES}`);
   
   try {
-    // 1. Récupérer la dernière sync
-    const { data: lastSync } = await supabase
-      .from('orders')
-      .select('created_at')
-      .order('created_at', { ascending: false })
-      .limit(1);
+    // 1. Déterminer la date de début
+    let lastSyncDate: Date;
     
-    const lastSyncDate = new Date('2025-01-01');
-    
-    console.log(`📅 Dernière sync: ${lastSyncDate.toISOString()}`);
-    
-    // 2. Récupérer TOUTES les nouvelles ventes
-    let allSales: any[] = [];
-    let nextUrl: string | null = `${API_BASE}/api/2.0/order-sales/?accountId=295&pageSize=50`;
-    let pageCount = 0;
-    
-    while (nextUrl && pageCount < 20) {
-      pageCount++;
-      console.log(`📄 Chargement page ${pageCount}...`);
+    if (SYNC_MODE === 'full') {
+      // Mode full : prendre la date configurée
+      lastSyncDate = new Date(SYNC_START_DATE);
+      console.log(`📅 Synchronisation COMPLÈTE depuis: ${lastSyncDate.toISOString()}`);
+    } else {
+      // Mode incrémental : récupérer la dernière sync
+      const { data: lastSync } = await supabase
+        .from('orders')
+        .select('created_at')
+        .order('created_at', { ascending: false })
+        .limit(1);
       
+      if (lastSync && lastSync.length > 0) {
+        lastSyncDate = new Date(lastSync[0].created_at);
+        // Reculer d'un jour pour être sûr de ne rien rater
+        lastSyncDate.setDate(lastSyncDate.getDate() - 1);
+      } else {
+        // Pas de données, commencer depuis le début configuré
+        lastSyncDate = new Date(SYNC_START_DATE);
+      }
+      console.log(`📅 Synchronisation incrémentale depuis: ${lastSyncDate.toISOString()}`);
+    }
+    
+    // 2. Récupérer TOUTES les ventes depuis cette date
+    let allSales: any[] = [];
+    let nextUrl: string | null = `${API_BASE}/api/2.0/order-sales/?accountId=295&pageSize=${PAGE_SIZE}&ordering=-createdAt`;
+    let pageCount = 0;
+    let oldestDateFound = new Date();
+    let consecutiveErrors = 0;
+    const maxConsecutiveErrors = 5;
+    
+    console.log(`🔄 Début de la récupération des données...`);
+    
+    while (nextUrl && pageCount < MAX_PAGES) {
+      pageCount++;
+      console.log(`📄 Chargement page ${pageCount}/${MAX_PAGES}... (${allSales.length} ventes récupérées)`);
+      
+      // Pause progressive pour éviter les timeouts
       if (pageCount > 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        const pauseTime = Math.min(pageCount * 100, 3000); // Maximum 3 secondes
+        await new Promise(resolve => setTimeout(resolve, pauseTime));
       }
       
       try {
-        const response = await fetch(nextUrl, { headers });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 secondes timeout
+        
+        const response = await fetch(nextUrl, { 
+          headers,
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
         
         if (!response.ok) {
-          throw new Error(`Erreur API: ${response.status}`);
+          if (response.status === 429) {
+            console.log('⏳ Rate limit atteint, pause de 15 secondes...');
+            await new Promise(resolve => setTimeout(resolve, 15000));
+            pageCount--; // Ne pas compter cette tentative
+            continue;
+          }
+          throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
         }
         
         const data = await response.json();
         const pageSales = data.results || [];
         
-        // Debug : voir la structure d'un productSale
+        // Reset compteur d'erreurs en cas de succès
+        consecutiveErrors = 0;
+        
+        // ✅ Log plus détaillé
+        if (pageSales.length > 0) {
+          const oldestInPage = new Date(pageSales[pageSales.length - 1].createdAt);
+          const newestInPage = new Date(pageSales[0].createdAt);
+          
+          console.log(`  📊 Page ${pageCount}: ${pageSales.length} ventes`);
+          console.log(`  📅 Période: ${oldestInPage.toISOString().split('T')[0]} → ${newestInPage.toISOString().split('T')[0]}`);
+          
+          if (oldestInPage < oldestDateFound) {
+            oldestDateFound = oldestInPage;
+          }
+        } else {
+          console.log(`  📋 Page ${pageCount}: vide, arrêt de la récupération`);
+          break;
+        }
+        
+        // Debug : voir la structure d'un productSale sur la première page
         if (pageCount === 1 && pageSales.length > 0 && pageSales[0].productSales?.length > 0) {
           console.log('📋 Structure d\'un productSale:');
           console.log(JSON.stringify(pageSales[0].productSales[0], null, 2));
         }
         
-        const newSales = pageSales.filter((sale: any) => 
-          new Date(sale.createdAt) > lastSyncDate
-        );
-        
-        allSales = [...allSales, ...newSales];
-        
-        if (newSales.length < pageSales.length) {
-          console.log('✅ Trouvé des ventes déjà synchronisées, arrêt');
-          break;
+        // ✅ En mode FULL, prendre TOUTES les ventes sans filtrage par date
+        if (SYNC_MODE === 'full') {
+          allSales = [...allSales, ...pageSales];
+          console.log(`  ✅ Mode FULL: ${pageSales.length} ventes ajoutées (Total: ${allSales.length})`);
+        } else {
+          // Mode incrémental : filtrer par date
+          const newSales = pageSales.filter((sale: any) => 
+            new Date(sale.createdAt) > lastSyncDate
+          );
+          allSales = [...allSales, ...newSales];
+          console.log(`  ✅ Mode INCRÉMENTAL: ${newSales.length}/${pageSales.length} ventes nouvelles (Total: ${allSales.length})`);
+          
+          // Si on a atteint des ventes plus anciennes que notre cible, on peut arrêter
+          if (oldestDateFound < lastSyncDate && newSales.length === 0) {
+            console.log('✅ Toutes les nouvelles ventes récupérées');
+            break;
+          }
         }
         
         nextUrl = data.next;
         
-        if (allSales.length > 5000) {
-          console.log('⚠️ Limite de 5000 ventes atteinte');
-          break;
+        // ✅ Log de progression plus fréquent
+        if (allSales.length > 0 && allSales.length % 1000 === 0) {
+          console.log(`🚀 PROGRESSION: ${allSales.length} ventes récupérées...`);
+          console.log(`📊 Estimation: ${Math.round((pageCount / MAX_PAGES) * 100)}% des pages possibles traitées`);
         }
+        
       } catch (fetchError) {
-        if (fetchError.cause?.code === 'ECONNRESET' && pageCount > 1) {
-          console.warn(`⚠️ Connexion reset page ${pageCount}, on continue avec les données récupérées`);
+        consecutiveErrors++;
+        console.error(`❌ Erreur page ${pageCount} (${consecutiveErrors}/${maxConsecutiveErrors}):`, fetchError.message);
+        
+        if (fetchError.name === 'AbortError') {
+          console.log('⏳ Timeout de 45s atteint, pause de 10 secondes...');
+          await new Promise(resolve => setTimeout(resolve, 10000));
+        } else if (fetchError.code === 'ECONNRESET' || fetchError.code === 'ENOTFOUND') {
+          console.log('🌐 Erreur réseau, pause de 5 secondes puis reprise...');
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+        
+        if (consecutiveErrors >= maxConsecutiveErrors) {
+          console.error(`❌ Trop d'erreurs consécutives (${consecutiveErrors}), arrêt`);
+          if (allSales.length === 0) {
+            throw new Error('Impossible de récupérer des données');
+          }
+          console.warn(`⚠️ Continuation avec ${allSales.length} ventes récupérées`);
           break;
         }
-        throw fetchError;
+        
+        pageCount--; // Ne pas compter cette tentative ratée
+        continue;
       }
     }
     
-    console.log(`📦 ${allSales.length} nouvelles ventes trouvées`);
+    // ✅ Log final plus détaillé
+    console.log(`\n🎯 RÉSULTAT DE LA RÉCUPÉRATION:`);
+    console.log(`  📦 ${allSales.length} ventes récupérées au total`);
+    console.log(`  📄 ${pageCount} pages traitées sur ${MAX_PAGES} maximum`);
+    if (allSales.length > 0) {
+      console.log(`  📅 Période couverte: ${oldestDateFound.toISOString().split('T')[0]} → ${allSales[0]?.createdAt?.split('T')[0] || 'N/A'}`);
+      
+      // Stats par venue
+      const venueStats = allSales.reduce((acc, sale) => {
+        const venue = sale.location?.venue?.name || 'Unknown';
+        acc[venue] = (acc[venue] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      
+      console.log(`  🏢 Venues trouvées: ${Object.keys(venueStats).length}`);
+      const topVenues = Object.entries(venueStats)
+        .sort(([,a], [,b]) => b - a)
+        .slice(0, 5);
+      topVenues.forEach(([venue, count]) => {
+        console.log(`    - ${venue}: ${count} ventes`);
+      });
+    }
     
     if (allSales.length === 0) {
-      console.log('✅ Aucune nouvelle vente');
+      console.log('⚠️ AUCUNE vente récupérée !');
       await supabase.from('sync_logs').insert({
         sync_type: 'vendlive_orders',
         records_synced: 0,
@@ -175,24 +287,31 @@ async function syncVendlive() {
         completed_at: new Date().toISOString(),
         started_at: new Date(startTime).toISOString(),
         last_vendlive_id: null,
-        metadata: null
+        metadata: {
+          mode: SYNC_MODE,
+          lastSyncDate: lastSyncDate.toISOString(),
+          pagesProcessed: pageCount,
+          message: 'Aucune nouvelle vente trouvée'
+        }
       });
       console.log(`⏱️ Durée: ${(Date.now() - startTime) / 1000}s`);
       return;
     }
     
     // 3. Traiter TOUTES les ventes avec la logique correcte
+    console.log(`\n💾 TRAITEMENT DES DONNÉES...`);
     const ordersToInsert = await processBatch(allSales);
-    console.log(`💾 Insertion de ${ordersToInsert.length} lignes...`);
+    console.log(`✅ ${ordersToInsert.length} lignes prêtes pour insertion`);
     
     // 4. Debug : afficher un exemple
     if (ordersToInsert.length > 0) {
-      console.log('📋 Exemple de données à insérer:');
+      console.log('\n📋 Exemple de données à insérer:');
       const example = ordersToInsert.find(o => o.discount_amount > 0) || ordersToInsert[0];
       console.log(JSON.stringify(example, null, 2));
     }
     
     // 5. Calculer les totaux pour vérification
+    console.log(`\n📊 ANALYSE DES DONNÉES...`);
     const totalByVenue = ordersToInsert.reduce((acc, order) => {
       if (order.status === 'completed') {
         const venue = order.venue_name;
@@ -206,21 +325,28 @@ async function syncVendlive() {
     }, {} as Record<string, any>);
     
     console.log('💰 CA et discounts par venue:');
-    Object.entries(totalByVenue).forEach(([venue, data]) => {
-      console.log(`  - ${venue}:`);
-      console.log(`    Commandes: ${data.count}`);
-      console.log(`    CA TTC: ${data.revenue_ttc.toFixed(2)}€`);
-      console.log(`    CA HT: ${data.revenue_ht.toFixed(2)}€`);
-      console.log(`    Discounts: ${data.discount.toFixed(2)}€`);
-    });
+    Object.entries(totalByVenue)
+      .sort(([,a], [,b]) => b.revenue_ttc - a.revenue_ttc)
+      .slice(0, 10)
+      .forEach(([venue, data]) => {
+        console.log(`  - ${venue}:`);
+        console.log(`    Commandes: ${data.count}`);
+        console.log(`    CA TTC: ${data.revenue_ttc.toFixed(2)}€`);
+        console.log(`    CA HT: ${data.revenue_ht.toFixed(2)}€`);
+        console.log(`    Discounts: ${data.discount.toFixed(2)}€`);
+      });
     
-    // 6. Insertion par batch avec upsert - SANS FILTRAGE
+    // 6. Insertion par batch avec upsert
+    console.log(`\n📤 INSERTION EN BASE...`);
     const batchSize = 500;
+    let totalInserted = 0;
+    
     for (let i = 0; i < ordersToInsert.length; i += batchSize) {
       const batch = ordersToInsert.slice(i, i + batchSize);
+      const batchNumber = Math.floor(i/batchSize) + 1;
+      const totalBatches = Math.ceil(ordersToInsert.length/batchSize);
       
-      // ✅ NE PLUS FILTRER - on garde TOUS les produits (Success + Failed)
-      console.log(`📤 Insertion batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(ordersToInsert.length/batchSize)}: ${batch.length} lignes...`);
+      console.log(`📤 Insertion batch ${batchNumber}/${totalBatches}: ${batch.length} lignes...`);
       
       const { error: insertError } = await supabase
         .from('orders')
@@ -235,41 +361,69 @@ async function syncVendlive() {
         throw insertError;
       }
       
-      console.log(`✅ Batch ${Math.floor(i/batchSize) + 1}: ${batch.length} lignes insérées`);
+      totalInserted += batch.length;
+      const progress = Math.round((totalInserted / ordersToInsert.length) * 100);
+      console.log(`✅ Batch ${batchNumber}: ${batch.length} lignes insérées (${progress}% - Total: ${totalInserted})`);
+      
+      // Petite pause entre les batch pour ne pas surcharger
+      if (batchNumber < totalBatches) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
     }
     
     // 7. Mise à jour de la table sales
     try {
+      console.log('\n📊 Mise à jour de la table sales...');
       await updateSalesTable(allSales);
     } catch (err) {
       console.warn('⚠️ Mise à jour de la table sales échouée:', err.message);
     }
     
-    // 8. Log final - compter toutes les lignes insérées
-    const totalInserted = ordersToInsert.length; // ✅ Plus de filtre
+    // 8. Log final
     await supabase.from('sync_logs').insert({
       sync_type: 'vendlive_orders',
       records_synced: totalInserted,
       status: 'completed',
       completed_at: new Date().toISOString(),
       started_at: new Date(startTime).toISOString(),
-      last_vendlive_id: null,
-      metadata: null
+      last_vendlive_id: allSales[0]?.id || null,
+      metadata: {
+        mode: SYNC_MODE,
+        lastSyncDate: lastSyncDate.toISOString(),
+        pagesProcessed: pageCount,
+        oldestDateFound: oldestDateFound.toISOString(),
+        newestDateFound: allSales[0]?.createdAt || null,
+        salesRetrieved: allSales.length,
+        ordersInserted: totalInserted,
+        venuesFound: Object.keys(totalByVenue).length
+      }
     });
     
     const duration = (Date.now() - startTime) / 1000;
-    console.log(`🎉 Sync terminée en ${duration}s !`);
-    console.log(`📊 ${allSales.length} ventes → ${ordersToInsert.length} lignes`);
+    console.log(`\n🎉 SYNCHRONISATION TERMINÉE !`);
+    console.log(`⏱️ Durée: ${Math.round(duration)}s (${Math.round(duration/60)}min)`);
+    console.log(`📊 ${allSales.length} ventes → ${ordersToInsert.length} lignes → ${totalInserted} insérées`);
+    console.log(`🏢 ${Object.keys(totalByVenue).length} venues avec des ventes`);
+    console.log(`💰 CA total: ${Object.values(totalByVenue).reduce((sum, v) => sum + v.revenue_ttc, 0).toFixed(2)}€`);
     
-    // 9. Mettre à jour les stats journalières
-    try {
-      await updateDailyStats();
-    } catch (err) {
-      console.warn('⚠️ Mise à jour des stats journalières échouée:', err.message);
+    // 9. Mettre à jour les stats journalières pour toutes les dates affectées
+    if (SYNC_MODE === 'full') {
+      try {
+        console.log('\n📊 Mise à jour complète des stats journalières...');
+        await updateAllDailyStats();
+      } catch (err) {
+        console.warn('⚠️ Mise à jour des stats journalières échouée:', err.message);
+      }
+    } else {
+      try {
+        await updateDailyStats();
+      } catch (err) {
+        console.warn('⚠️ Mise à jour des stats journalières échouée:', err.message);
+      }
     }
     
   } catch (error) {
-    console.error('❌ Erreur:', error);
+    console.error('\n❌ ERREUR FATALE:', error);
     await supabase.from('sync_logs').insert({
       sync_type: 'vendlive_orders',
       status: 'failed',
@@ -278,7 +432,11 @@ async function syncVendlive() {
       started_at: new Date(startTime).toISOString(),
       records_synced: 0,
       last_vendlive_id: null,
-      metadata: null
+      metadata: {
+        mode: SYNC_MODE,
+        error: error.toString(),
+        stack: error.stack
+      }
     });
     throw error;
   }
@@ -346,6 +504,8 @@ async function updateSalesTable(vendliveSales: any[]) {
   
   // Insérer par batch
   const batchSize = 500;
+  let totalSalesInserted = 0;
+  
   for (let i = 0; i < salesToUpsert.length; i += batchSize) {
     const batch = salesToUpsert.slice(i, i + batchSize);
     
@@ -360,12 +520,15 @@ async function updateSalesTable(vendliveSales: any[]) {
       console.error('❌ Erreur mise à jour sales:', error);
       throw error;
     }
+    
+    totalSalesInserted += batch.length;
+    console.log(`✅ Sales batch ${Math.floor(i/batchSize) + 1}: ${batch.length} ventes (Total: ${totalSalesInserted})`);
   }
   
   console.log(`✅ ${salesToUpsert.length} ventes mises à jour dans la table sales`);
 }
 
-// Mettre à jour les stats journalières
+// Mettre à jour les stats journalières (aujourd'hui seulement)
 async function updateDailyStats() {
   console.log('📊 Mise à jour des stats journalières...');
   
@@ -436,13 +599,106 @@ async function updateDailyStats() {
   }
 }
 
+// Nouvelle fonction pour mettre à jour TOUTES les stats journalières
+async function updateAllDailyStats() {
+  console.log('📊 Recalcul complet des stats journalières...');
+  
+  // Effacer toutes les stats existantes
+  await supabase.from('daily_stats').delete().neq('date', '1900-01-01'); // Trick pour tout supprimer
+  
+  // Récupérer toutes les dates distinctes
+  const { data: dates } = await supabase
+    .from('sales')
+    .select('created_at')
+    .order('created_at', { ascending: true });
+  
+  if (!dates || dates.length === 0) return;
+  
+  // Extraire les dates uniques
+  const uniqueDates = [...new Set(dates.map(d => d.created_at.split('T')[0]))];
+  console.log(`📅 ${uniqueDates.length} jours à traiter`);
+  
+  let processedDates = 0;
+  
+  // Traiter par batch de dates
+  for (const date of uniqueDates) {
+    const { data: salesData } = await supabase
+      .from('sales')
+      .select('*')
+      .gte('created_at', date + 'T00:00:00')
+      .lt('created_at', date + 'T23:59:59');
+    
+    if (salesData && salesData.length > 0) {
+      // Même logique que updateDailyStats mais pour une date spécifique
+      const statsByVenue = salesData.reduce((acc, sale) => {
+        const key = `${sale.venue_id}_${sale.venue_name}`;
+        if (!acc[key]) {
+          acc[key] = {
+            date: date,
+            venue_id: sale.venue_id,
+            venue_name: sale.venue_name,
+            machine_id: sale.machine_id || 0,
+            machine_name: sale.machine_name,
+            total_orders: 0,
+            successful_orders: 0,
+            refunded_orders: 0,
+            total_revenue_ht: 0,
+            total_revenue_ttc: 0,
+            total_discount: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+        }
+        
+        if (sale.status !== 'refunded') {
+          acc[key].total_orders++;
+        }
+        if (sale.status === 'completed') {
+          acc[key].successful_orders++;
+          acc[key].total_revenue_ttc += parseFloat(sale.total_ttc) || 0;
+          acc[key].total_revenue_ht += parseFloat(sale.total_ht) || 0;
+          acc[key].total_discount += parseFloat(sale.discount_amount) || 0;
+        }
+        if (sale.status === 'refunded') {
+          acc[key].refunded_orders++;
+        }
+        
+        return acc;
+      }, {} as Record<string, any>);
+      
+      const statsToInsert = Object.values(statsByVenue);
+      
+      if (statsToInsert.length > 0) {
+        const { error } = await supabase.from('daily_stats').insert(statsToInsert);
+        if (!error) {
+          processedDates++;
+          if (processedDates % 10 === 0 || processedDates === uniqueDates.length) {
+            console.log(`✅ ${processedDates}/${uniqueDates.length} jours traités`);
+          }
+        }
+      }
+    }
+  }
+  
+  console.log(`✅ Recalcul des stats journalières terminé : ${processedDates}/${uniqueDates.length} jours`);
+}
+
 // Lancer la synchronisation
+console.log('🚀 Démarrage du script de synchronisation VendLive...');
+console.log(`📅 Date: ${new Date().toISOString()}`);
+console.log(`🔧 Configuration:`);
+console.log(`  - Mode: ${SYNC_MODE}`);
+console.log(`  - Date de début: ${SYNC_START_DATE}`);
+console.log(`  - Pages max: ${MAX_PAGES}`);
+console.log(`  - Taille de page: ${PAGE_SIZE}`);
+
 syncVendlive()
   .then(() => {
-    console.log('✅ Script terminé avec succès');
+    console.log('\n✅ Script terminé avec succès');
     process.exit(0);
   })
   .catch((err) => {
-    console.error('❌ Erreur fatale:', err);
+    console.error('\n❌ Erreur fatale:', err);
+    console.error('Stack:', err.stack);
     process.exit(1);
   });
