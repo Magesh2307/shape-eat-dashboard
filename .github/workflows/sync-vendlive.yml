@@ -2,36 +2,50 @@ name: 🔄 Sync VendLive → Supabase
 
 on:
   schedule:
-    - cron: '5 7-22 * * *'
+    - cron: '5 7-22 * * *' # toutes les heures 07:05→22:05 (UTC)
   workflow_dispatch:
 
-# AJOUTEZ CETTE SECTION
 permissions:
   contents: read
-  issues: write
-  actions: read
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    
+
     steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v3
-    
-    - name: 🟢 Setup Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18'
-    
-    - name: 📦 Install dependencies
-      run: |
-        npm install @supabase/supabase-js
-        npm install -D tsx @types/node
-    
-    - name: 🔄 Run synchronization
-      env:
-        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-        SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-      run: npx tsx scripts/sync-vendlive.ts
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 📦 Install dependencies
+        run: |
+          npm ci
+          npm i -D tsx
+          npm i dotenv
+
+      - name: 🔄 Run synchronization
+        env:
+          # ✅ ces noms correspondent à ton script sync-vendlive.ts
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+          VENDLIVE_API_URL: https://vendlive.com/api/2.0/order-sales/
+          VENDLIVE_ACCOUNT_ID: "295"
+          VENDLIVE_TOKEN: ${{ secrets.VENDLIVE_TOKEN }}
+
+          # Fenêtre + tri (sûr par défaut)
+          SYNC_MODE: full
+          SYNC_START_DATE: "2024-01-01"
+          SYNC_END_DATE: ${{ steps.tomorrow.outputs.value }}
+          MAX_PAGES: "0"
+          ORDER_BY: -created_at
+        run: npx tsx scripts/sync-vendlive.ts
+
+      - name: 📅 Compute tomorrow (ISO)
+        id: tomorrow
+        run: echo "value=$(date -u -d 'tomorrow' +%F)" >> $GITHUB_OUTPUT
