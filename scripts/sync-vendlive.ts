@@ -498,7 +498,12 @@ async function syncVendlive(): Promise<void> {
   
   // 🆕 RÉCUPÉRER TOUTES LES DONNÉES - Période large par défaut
   const startDate = process.env.SYNC_START_DATE || '2020-01-01'; // ✅ Date très ancienne
-  const endDate = process.env.SYNC_END_DATE || new Date().toISOString().split('T')[0];
+const endDate = process.env.SYNC_END_DATE || (() => {
+  const d = new Date();
+  d.setDate(d.getDate() + 1); // demain
+  return d.toISOString().split('T')[0];
+})();
+console.log("📅 Using endDate:", endDate);
   const maxPages = parseInt(process.env.MAX_PAGES || '0'); // ✅ 0 = pas de limite
 
   console.log(`🚀 Synchronisation VendLive (${syncMode})`);
@@ -565,6 +570,7 @@ async function syncVendlive(): Promise<void> {
     throw error;
   }
 }
+
 
 // Exécution du script
 console.log('🚀 Démarrage de la synchronisation...');
