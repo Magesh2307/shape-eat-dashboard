@@ -2,38 +2,51 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import ReactDOM from 'react-dom';
 import CustomDateRangePicker from './CustomDateRangePicker';
 
+const parseJsonField = (field: any): any[] => {
+  if (Array.isArray(field)) return field;
+  if (typeof field === 'string') {
+    try {
+      const parsed = JSON.parse(field);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
 interface Sale {
   id: string;
-  createdAt: string;
-  machine?: {
-    id: number;
-    friendlyName: string;
-  };
+  vendlive_id: string;
+  transaction_id: string;
+  machine_id: number;
+  machine_name: string;
+  venue_id: number | null;
+  venue_name: string | null;
+  customer_email: string | null;
+  promo_code: string | null;
+  total_ttc: number;
+  total_ht: number;
+  discount_amount: number;
+  nb_products: number;
+  status: string;
+  payment_status: string;
+  created_at: string;
+  updated_at: string;
+  products: any[]; // ✅ Le JSON avec les produits
+  categories: string[]; // ✅ Le JSON avec les catégories
+  
+  // ✅ Compatibility pour l'ancien code
+  createdAt?: string;
   location?: {
     venue?: {
       id: number;
       name: string;
     };
-    id?: number;
-    description?: string;
   };
-  charged?: string;
   total?: string;
   totalCharged?: string;
-  products?: any[];
-  productSales?: any[];
-  discountAmount?: string;
-  discount?: any;
-  totalDiscount?: string;
-  promoCode?: string;
-  couponCode?: string;
-  voucherCode?: string;
-  customerEmail?: string;
-  customer?: {
-    email?: string;
-  };
-  email?: string;
-  [key: string]: any;
+  charged?: string;
 }
 
 interface SalesViewProps {
@@ -116,7 +129,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
     end: null
   });
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [selectedVenues, setSelectedVenues] = useState<number[]>([]);
+  const [selectedVenue, setSelectedVenue] = useState<string[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [showVenueDropdown, setShowVenueDropdown] = useState(false);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
@@ -167,7 +180,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
   // Réinitialiser la page lors du changement de recherche
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearchQuery, selectedPeriod, selectedVenues, selectedCategories]);
+  }, [debouncedSearchQuery, selectedPeriod, selectedVenue, selectedCategories]);
 
   // Extraire toutes les venues uniques
   const allVenues = useMemo(() => {
@@ -214,80 +227,84 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
   }, [sales]);
 
   // Fonction de filtrage par date optimisée
-  const getDateFilteredSales = useCallback(() => {
-    try {
-      let filtered = [...sales];
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      
-      switch (selectedPeriod) {
-        case 'today':
+const getDateFilteredSales = useCallback(() => {
+  try {
+    let filtered = [...sales];
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    switch (selectedPeriod) {
+      case 'today':
+        filtered = filtered.filter(sale => {
+          // ✅ Utiliser created_at OU createdAt
+          const dateField = sale.created_at || sale.createdAt;
+          if (!dateField) return false;
+          const saleDate = new Date(dateField);
+          return saleDate >= today;
+        });
+        break;
+      case 'yesterday':
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        filtered = filtered.filter(sale => {
+          const dateField = sale.created_at || sale.createdAt;
+          if (!dateField) return false;
+          const saleDate = new Date(dateField);
+          return saleDate >= yesterday && saleDate < today;
+        });
+        break;
+      case '7days':
+        const sevenDaysAgo = new Date(today);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        filtered = filtered.filter(sale => {
+          const dateField = sale.created_at || sale.createdAt;
+          if (!dateField) return false;
+          const saleDate = new Date(dateField);
+          return saleDate >= sevenDaysAgo;
+        });
+        break;
+      case '30days':
+        const thirtyDaysAgo = new Date(today);
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        filtered = filtered.filter(sale => {
+          const dateField = sale.created_at || sale.createdAt;
+          if (!dateField) return false;
+          const saleDate = new Date(dateField);
+          return saleDate >= thirtyDaysAgo;
+        });
+        break;
+      case 'custom':
+        if (customDateRange.start && customDateRange.end) {
+          const startDate = new Date(customDateRange.start);
+          const endDate = new Date(customDateRange.end);
+          endDate.setHours(23, 59, 59, 999);
+          
           filtered = filtered.filter(sale => {
-            const saleDate = new Date(sale.createdAt);
-            return saleDate >= today;
+            const dateField = sale.created_at || sale.createdAt;
+            if (!dateField) return false;
+            const saleDate = new Date(dateField);
+            return saleDate >= startDate && saleDate <= endDate;
           });
-          break;
-        case 'yesterday':
-          const yesterday = new Date(today);
-          yesterday.setDate(yesterday.getDate() - 1);
-          filtered = filtered.filter(sale => {
-            const saleDate = new Date(sale.createdAt);
-            return saleDate >= yesterday && saleDate < today;
-          });
-          break;
-        case '7days':
-          const sevenDaysAgo = new Date(today);
-          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-          filtered = filtered.filter(sale => {
-            const saleDate = new Date(sale.createdAt);
-            return saleDate >= sevenDaysAgo;
-          });
-          break;
-        case '30days':
-          const thirtyDaysAgo = new Date(today);
-          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-          filtered = filtered.filter(sale => {
-            const saleDate = new Date(sale.createdAt);
-            return saleDate >= thirtyDaysAgo;
-          });
-          break;
-        case 'custom':
-          if (customDateRange.start && customDateRange.end) {
-            // Conversion sécurisée des dates
-            const startDate = customDateRange.start instanceof Date 
-              ? new Date(customDateRange.start.getTime()) 
-              : new Date(customDateRange.start);
-            const endDate = customDateRange.end instanceof Date 
-              ? new Date(customDateRange.end.getTime()) 
-              : new Date(customDateRange.end);
-            
-            // Ajouter 23h59m59s à la date de fin
-            endDate.setHours(23, 59, 59, 999);
-            
-            filtered = filtered.filter(sale => {
-              const saleDate = new Date(sale.createdAt);
-              return saleDate >= startDate && saleDate <= endDate;
-            });
-          }
-          break;
-      }
-      
-      return filtered;
-    } catch (error) {
-      console.error('Error in getDateFilteredSales:', error);
-      return [];
+        }
+        break;
     }
-  }, [sales, selectedPeriod, customDateRange]);
+    
+    console.log(`📅 Filtre "${selectedPeriod}": ${filtered.length} ventes sur ${sales.length}`);
+    return filtered;
+  } catch (error) {
+    console.error('Error in getDateFilteredSales:', error);
+    return [];
+  }
+}, [sales, selectedPeriod, customDateRange]);
 
   // Fonction de filtrage par venue
-  const getVenueFilteredSales = useCallback((salesData: Sale[]) => {
-    if (selectedVenues.length === 0) return salesData;
-    
-    return salesData.filter(sale => {
-      const venueId = sale.location?.venue?.id;
-      return venueId && selectedVenues.includes(venueId);
-    });
-  }, [selectedVenues]);
+	const getVenueFilteredSales = useCallback((salesData: Sale[]) => {
+  if (selectedVenue.length === 0) return salesData;  // Vérifier si l'array est vide
+  
+  return salesData.filter(sale => {
+    return selectedVenue.includes(sale.venue_name || '');
+  });
+}, [selectedVenue]);
 
   // Fonction de filtrage par catégorie
   const getCategoryFilteredSales = useCallback((salesData: Sale[]) => {
@@ -317,108 +334,122 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
     });
   }, [selectedCategories]);
 
-  // Filtrage et tri pour l'onglet transactions avec optimisation
-  const filteredAndSortedSales = useMemo(() => {
-    setIsProcessing(true);
+// Filtrage et tri pour l'onglet transactions avec optimisation
+const filteredAndSortedSales = useMemo(() => {
+  setIsProcessing(true);
+  
+  // Utiliser setTimeout pour ne pas bloquer l'UI
+  const result = (() => {
+    let filtered = getDateFilteredSales();
+    filtered = getVenueFilteredSales(filtered);
+    filtered = getCategoryFilteredSales(filtered);
     
-    // Utiliser setTimeout pour ne pas bloquer l'UI
-    const result = (() => {
-      let filtered = getDateFilteredSales();
-      filtered = getVenueFilteredSales(filtered);
-      filtered = getCategoryFilteredSales(filtered);
+    // Filtrage par recherche optimisé
+    if (debouncedSearchQuery) {
+      const query = debouncedSearchQuery.toLowerCase().trim();
       
-      // Filtrage par recherche optimisé
-      if (debouncedSearchQuery) {
-        const query = debouncedSearchQuery.toLowerCase().trim();
+      filtered = filtered.filter((sale: any) => {
+        // Construction optimisée de la chaîne de recherche
+        const searchParts: string[] = [];
         
-        filtered = filtered.filter(sale => {
-          // Construction optimisée de la chaîne de recherche
-          const searchParts = [];
-          
-          // ID
-          if (sale.id) searchParts.push(sale.id.toLowerCase());
-          
-          // Venue
-          if (sale.location?.venue?.name) {
-            searchParts.push(sale.location.venue.name.toLowerCase());
+        // ID
+        if (sale.id) searchParts.push(String(sale.id).toLowerCase());
+        if (sale.transaction_id) searchParts.push(String(sale.transaction_id).toLowerCase());
+        
+        // Venue
+        if (sale.location?.venue?.name) searchParts.push(sale.location.venue.name.toLowerCase());
+        if (sale.venue_name) searchParts.push(sale.venue_name.toLowerCase());
+        
+        // Montant
+        const amount =
+          Number(sale.total_ttc ?? NaN) ||
+          parseFloat((sale.total as any) || (sale.totalCharged as any) || '0');
+        searchParts.push(amount.toFixed(2));
+        
+        // Code promo
+        const promoCode =
+          sale.promo_code ||
+          (sale as any).promoCode ||
+          (sale as any).couponCode ||
+          (sale as any).voucherCode ||
+          (sale.products || sale.productSales || [])
+            .map((p: any) => p.voucherCode || p.promoCode || '')
+            .join(' ');
+        if (promoCode) searchParts.push(promoCode.toLowerCase());
+        
+        // Email
+        const email =
+          sale.customer_email ||
+          (sale as any).client_email ||
+          sale.customer?.email ||
+          (sale as any).email ||
+          '';
+        if (email) searchParts.push(email.toLowerCase());
+        
+        // Produits et catégories
+        const products = sale.productSales || sale.products || [];
+        products.forEach((p: any) => {
+          if (p.productName || p.name) {
+            searchParts.push((p.productName || p.name).toLowerCase());
           }
-          
-          // Montant
-          const amount = parseFloat(sale.total || sale.totalCharged || '0');
-          searchParts.push(amount.toFixed(2));
-          
-          // Code promo
-          const promoCode = sale.promoCode || sale.couponCode || sale.voucherCode || '';
-          if (promoCode) searchParts.push(promoCode.toLowerCase());
-          
-          // Email
-          const email = sale.customerEmail || sale.customer?.email || sale.email || '';
-          if (email) searchParts.push(email.toLowerCase());
-          
-          // Produits et catégories
-          const products = sale.productSales || sale.products || [];
-          products.forEach((p: any) => {
-            if (p.productName || p.name) {
-              searchParts.push((p.productName || p.name).toLowerCase());
-            }
-            
-            let catName = '';
-            if (typeof p.category === 'string') catName = p.category;
-            else if (p.category?.name) catName = p.category.name;
-            else if (p.productCategory) {
-              catName = typeof p.productCategory === 'string' 
-                ? p.productCategory 
-                : p.productCategory.name || '';
-            }
-            if (catName) searchParts.push(catName.toLowerCase());
-          });
-          
-          const searchText = searchParts.join(' ');
-          return searchText.includes(query);
-        });
-      }
-
-      // Tri
-      if (sortConfig) {
-        filtered.sort((a, b) => {
-          let aValue: any;
-          let bValue: any;
-
-          switch (sortConfig.key) {
-            case 'date':
-              aValue = new Date(a.createdAt).getTime();
-              bValue = new Date(b.createdAt).getTime();
-              break;
-            case 'venue':
-              aValue = a.location?.venue?.name || '';
-              bValue = b.location?.venue?.name || '';
-              break;
-            case 'amount':
-              aValue = parseFloat(a.total || a.totalCharged || '0');
-              bValue = parseFloat(b.total || b.totalCharged || '0');
-              break;
-            case 'status':
-              aValue = a.charged === 'Yes' ? 1 : 0;
-              bValue = b.charged === 'Yes' ? 1 : 0;
-              break;
-            default:
-              return 0;
+          let catName = '';
+          if (typeof p.category === 'string') catName = p.category;
+          else if (p.category?.name) catName = p.category.name;
+          else if (p.productCategory) {
+            catName = typeof p.productCategory === 'string'
+              ? p.productCategory
+              : p.productCategory.name || '';
           }
-
-          if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-          if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-          return 0;
+          if (catName) searchParts.push(catName.toLowerCase());
         });
-      }
+        
+        // 🔍 Vérification finale
+        const searchText = searchParts.join(' ');
+        return searchText.includes(query); // Utiliser 'query' au lieu de 'debouncedSearchQuery.toLowerCase()'
+      });
+    }
 
-      return filtered;
-    })();
+    // Tri
+    if (sortConfig) {
+      filtered.sort((a, b) => {
+        let aValue: any;
+        let bValue: any;
 
-    // Démarquer la fin du traitement
-    setTimeout(() => setIsProcessing(false), 0);
-    
-    return result;
-  }, [sales, debouncedSearchQuery, sortConfig, selectedPeriod, customDateRange, selectedVenues, selectedCategories, getDateFilteredSales, getVenueFilteredSales, getCategoryFilteredSales]);
+        switch (sortConfig.key) {
+          case 'date':
+            aValue = new Date(a.created_at || a.createdAt).getTime();
+            bValue = new Date(b.created_at || b.createdAt).getTime();
+            break;
+          case 'venue':
+            aValue = a.venue_name || a.location?.venue?.name || '';
+            bValue = b.venue_name || b.location?.venue?.name || '';
+            break;
+          case 'amount':
+            aValue = parseFloat(a.total_ttc || a.total || a.totalCharged || '0');
+            bValue = parseFloat(b.total_ttc || b.total || b.totalCharged || '0');
+            break;
+          case 'status':
+            aValue = (a.status === 'completed' || a.payment_status === 'completed') ? 1 : 0;
+            bValue = (b.status === 'completed' || b.payment_status === 'completed') ? 1 : 0;
+            break;
+          default:
+            return 0;
+        }
+
+        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return filtered;
+  })(); // ← Fermeture de la fonction anonyme
+
+  // Démarquer la fin du traitement
+  setTimeout(() => setIsProcessing(false), 0);
+  
+  return result;
+}, [sales, debouncedSearchQuery, sortConfig, selectedPeriod, customDateRange, selectedVenue, selectedCategories, getDateFilteredSales, getVenueFilteredSales, getCategoryFilteredSales]); // ← Fermeture du useMemo
 
   // Calculs pour l'onglet produits optimisé
   const productStats = useMemo(() => {
@@ -539,7 +570,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
       totalQuantity,
       totalRevenue
     };
-  }, [activeTab, sales, selectedPeriod, customDateRange, selectedVenues, selectedCategories, debouncedProductSearchQuery, productSortBy, topProductsLimit, getDateFilteredSales, getVenueFilteredSales]);
+  }, [activeTab, sales, selectedPeriod, customDateRange, selectedVenue, selectedCategories, debouncedProductSearchQuery, productSortBy, topProductsLimit, getDateFilteredSales, getVenueFilteredSales]);
 
   // Données pour le graphique
   const chartData = useMemo(() => {
@@ -585,44 +616,75 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
   }, [filteredAndSortedSales]);
 
   // Format date helper
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('fr-FR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
+	const formatDate = (dateString: string) => {
+	  try {
+		if (!dateString) return '-';
+		
+		// Parser la date ISO
+		const date = new Date(dateString);
+		
+		// Vérifier si la date est valide
+		if (isNaN(date.getTime())) {
+		  // Si ce n'est pas une date valide, essayer de parser différemment
+		  const match = dateString.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+		  if (match) {
+			const [_, year, month, day, hour, minute] = match;
+			return `${day}/${month}/${year} ${hour}:${minute}`;
+		  }
+		  return dateString;
+		}
+		
+		// Formater la date
+		const day = date.getDate().toString().padStart(2, '0');
+		const month = (date.getMonth() + 1).toString().padStart(2, '0');
+		const year = date.getFullYear();
+		const hours = date.getHours().toString().padStart(2, '0');
+		const minutes = date.getMinutes().toString().padStart(2, '0');
+		
+		return `${day}/${month}/${year} ${hours}:${minutes}`;
+	  } catch (error) {
+		console.error('Erreur formatage date:', error, dateString);
+		return dateString;
+	  }
+	};
+
 
   // Format period display
-  const getFormattedPeriod = () => {
-    switch (selectedPeriod) {
-      case 'today': return "Aujourd'hui";
-      case 'yesterday': return 'Hier';
-      case '7days': return '7 derniers jours';
-      case '30days': return '30 derniers jours';
-      case 'custom':
-        if (customDateRange.start && customDateRange.end) {
-          return `${customDateRange.start.toLocaleDateString('fr-FR')} - ${customDateRange.end.toLocaleDateString('fr-FR')}`;
-        }
-        return 'Période personnalisée';
-      default: return 'Toutes les dates';
+ const asDate = (d: unknown) => {
+  if (d instanceof Date) return d;
+  const parsed = new Date(d as any);
+  return isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getFormattedPeriod = () => {
+  switch (selectedPeriod) {
+    case 'today': return "Aujourd'hui";
+    case 'yesterday': return 'Hier';
+    case '7days': return '7 derniers jours';
+    case '30days': return '30 derniers jours';
+    case 'custom': {
+      const s = asDate(customDateRange.start);
+      const e = asDate(customDateRange.end);
+      return (s && e)
+        ? `${s.toLocaleDateString('fr-FR')} - ${e.toLocaleDateString('fr-FR')}`
+        : 'Période personnalisée';
     }
-  };
+    default: return 'Toutes les dates';
+  }
+};
 
   // Réinitialiser les filtres
-  const resetFilters = () => {
-    setSelectedPeriod('all');
-    setCustomDateRange({ start: null, end: null });
-    setSelectedVenues([]);
-    setSelectedCategories([]);
-    setSearchQuery('');
-    setProductSearchQuery('');
-  };
+	const resetFilters = () => {
+	  setSelectedPeriod('all');
+	  setCustomDateRange({ start: null, end: null });
+	  setSelectedVenue([]);  // Array vide au lieu de 'all'
+	  setSelectedCategories([]);
+	  setSearchQuery('');
+	  setProductSearchQuery('');
+	};
 
-  const hasActiveFilters = selectedPeriod !== 'all' || selectedVenues.length > 0 || selectedCategories.length > 0;
+	// hasActiveFilters
+	const hasActiveFilters = selectedPeriod !== 'all' || selectedVenue.length > 0 || selectedCategories.length > 0;
 
   // Message de chargement si traitement en cours
   if (isProcessing && sales.length > 1000) {
@@ -736,82 +798,87 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
           </div>
 
           {/* Deuxième ligne : Filtres avancés */}
-          <div className="grid grid-cols-2 gap-4">
-            {/* Sélecteur de venues */}
-            <div className="relative">
-              <button
-                ref={venueButtonRef}
-                onClick={() => {
-                  setShowVenueDropdown(!showVenueDropdown);
-                  setShowCategoryDropdown(false);
-                }}
-                className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-xl text-white text-left flex items-center justify-between hover:bg-slate-700/70 transition-all duration-200"
-              >
-                <span className="truncate">
-                  {selectedVenues.length === 0 
-                    ? 'Toutes les venues' 
-                    : selectedVenues.map(venueId => {
-                        const venue = allVenues.find(v => v.id === venueId);
-                        return venue?.name || '';
-                      }).filter(name => name).join(', ')
-                  }
-                </span>
-                <svg className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${showVenueDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
+		<div className="grid grid-cols-2 gap-4">
+		  {/* Sélecteur de venues */}
+		<div className="relative">
+		  <button
+			ref={venueButtonRef}
+			onClick={() => {
+			  setShowVenueDropdown(!showVenueDropdown);
+			  setShowCategoryDropdown(false);
+			}}
+			className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-xl text-white text-left flex items-center justify-between hover:bg-slate-700/70 transition-all duration-200"
+		  >
+			<span className="truncate">
+			  {selectedVenue.length === 0 
+				? 'Toutes les venues' 
+				: `${selectedVenue.length} venue${selectedVenue.length > 1 ? 's' : ''} sélectionnée${selectedVenue.length > 1 ? 's' : ''}`
+			  }
+			</span>
+			<svg className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${showVenueDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+			</svg>
+		  </button>
 
-              <DropdownPortal 
-                targetRef={venueButtonRef} 
-                isOpen={showVenueDropdown}
-                onClose={() => setShowVenueDropdown(false)}
-              >
-                <div className="w-full bg-slate-800 border border-slate-600 rounded-xl shadow-2xl overflow-hidden">
-                  <div className="sticky top-0 bg-slate-800 border-b border-slate-700 p-3">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedVenues([]);
-                      }}
-                      className="w-full px-3 py-2 bg-slate-700/50 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors duration-200 text-sm"
-                    >
-                      Désélectionner tout
-                    </button>
-                  </div>
-                  <div className="max-h-48 overflow-y-auto p-2">
-                    {allVenues.length > 0 ? (
-                      allVenues.map(venue => {
-                        const isChecked = selectedVenues.includes(venue.id);
-                        return (
-                          <label 
-                            key={venue.id} 
-                            className="flex items-center px-3 py-2 hover:bg-slate-700/30 rounded-lg cursor-pointer"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setSelectedVenues([...selectedVenues, venue.id]);
-                                } else {
-                                  setSelectedVenues(selectedVenues.filter(id => id !== venue.id));
-                                }
-                              }}
-                              className="w-4 h-4 text-emerald-500 bg-slate-700 border-slate-600 rounded focus:ring-emerald-500 focus:ring-2"
-                            />
-                            <span className="ml-3 text-sm text-white select-none">{venue.name}</span>
-                          </label>
-                        );
-                      })
-                    ) : (
-                      <div className="p-4 text-center text-slate-400 text-sm">
-                        Aucune venue disponible
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </DropdownPortal>
-            </div>
+		  <DropdownPortal 
+			targetRef={venueButtonRef} 
+			isOpen={showVenueDropdown}
+			onClose={() => setShowVenueDropdown(false)}
+		  >
+			<div className="w-full bg-slate-800 border border-slate-600 rounded-xl shadow-2xl overflow-hidden">
+			  <div className="sticky top-0 bg-slate-800 border-b border-slate-700 p-3">
+				<button
+				  onClick={(e) => {
+					e.stopPropagation();
+					setSelectedVenue([]);
+				  }}
+				  className="w-full px-3 py-2 bg-slate-700/50 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors duration-200 text-sm"
+				>
+				  Désélectionner tout
+				</button>
+			  </div>
+			  <div className="max-h-48 overflow-y-auto p-2">
+				{Array.from(new Set(
+				  sales
+					.map(sale => sale.venue_name)
+					.filter(Boolean)
+				)).sort().length > 0 ? (
+				  Array.from(new Set(
+					sales
+					  .map(sale => sale.venue_name)
+					  .filter(Boolean)
+				  )).sort().map(venue => {
+					const isChecked = selectedVenue.includes(venue);
+					return (
+					  <label 
+						key={venue} 
+						className="flex items-center px-3 py-2 hover:bg-slate-700/30 rounded-lg cursor-pointer"
+					  >
+						<input
+						  type="checkbox"
+						  checked={isChecked}
+						  onChange={(e) => {
+							if (e.target.checked) {
+							  setSelectedVenue([...selectedVenue, venue]);
+							} else {
+							  setSelectedVenue(selectedVenue.filter(v => v !== venue));
+							}
+						  }}
+						  className="w-4 h-4 text-emerald-500 bg-slate-700 border-slate-600 rounded focus:ring-emerald-500 focus:ring-2"
+						/>
+						<span className="ml-3 text-sm text-white select-none">{venue}</span>
+					  </label>
+					);
+				  })
+				) : (
+				  <div className="p-4 text-center text-slate-400 text-sm">
+					Aucune venue disponible
+				  </div>
+				)}
+			  </div>
+			</div>
+		  </DropdownPortal>
+		</div>
 
             {/* Sélecteur de catégories */}
             <div className="relative">
@@ -930,19 +997,16 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
                 </span>
               )}
               
-              {selectedVenues.length > 0 && (
-                <span className="inline-flex items-center px-3 py-1 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-400 text-sm">
-                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                  <span className="max-w-xs truncate">
-                    {selectedVenues.map(venueId => {
-                      const venue = allVenues.find(v => v.id === venueId);
-                      return venue?.name || '';
-                    }).filter(name => name).join(', ')}
-                  </span>
-                </span>
-              )}
+              {selectedVenue.length > 0 && (
+			  <span className="inline-flex items-center px-3 py-1 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-400 text-sm">
+				<svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+				</svg>
+				<span className="max-w-xs truncate">
+				  {selectedVenue.join(', ')}
+				</span>
+			  </span>
+			)}
               
               {selectedCategories.length > 0 && (
                 <span className="inline-flex items-center px-3 py-1 rounded-lg bg-green-500/20 border border-green-500/30 text-green-400 text-sm">
@@ -1041,7 +1105,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
                         )}
                       </button>
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Catégories</th>
+                    <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Catégorie</th>
                     <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Produit</th>
                     <th className="px-6 py-4 text-right">
                       <button
@@ -1075,108 +1139,180 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-700/50">
-                  {currentSales.map((sale) => {
-                    const products = sale.productSales || sale.products || [];
-                    const categories = [...new Set(products.map((p: any) => {
-                      let categoryName = '';
-                      
-                      if (typeof p.category === 'string') {
-                        categoryName = p.category;
-                      } else if (p.category?.name) {
-                        categoryName = p.category.name;
-                      } else if (p.productCategory) {
-                        categoryName = typeof p.productCategory === 'string' 
-                          ? p.productCategory 
-                          : p.productCategory.name || '';
-                      } else if (p.product?.category) {
-                        categoryName = typeof p.product.category === 'string'
-                          ? p.product.category
-                          : p.product.category.name || '';
-                      }
-                      
-                      return categoryName || 'Non catégorisé';
-                    }))].filter(cat => cat !== 'Non catégorisé');
-                    const productNames = products.map((p: any) => 
-                      p.productName || p.name || p.product?.name || 'Produit inconnu'
-                    ).filter((name: string) => name !== 'Produit inconnu');
-                    
-                    const discountAmount = parseFloat(
-                      sale.discountAmount || 
-                      sale.discount?.amount || 
-                      sale.discount || 
-                      sale.totalDiscount || 
-                      '0'
-                    );
-                    
-                    const promoCode = sale.promoCode || 
-                                    sale.couponCode || 
-                                    sale.voucherCode || 
-                                    sale.discount?.code || 
-                                    '';
-                    
-                    const customerEmail = sale.customerEmail || sale.customer?.email || sale.email || '';
+					{currentSales.map((sale) => {
+  const products = sale.productSales || sale.products || [];
+  
+  // ✅ EXTRACTION CORRECTE selon la structure VendLive
+  const categories = [...new Set(products.map((productSale: any) => {
+    // Depuis la structure synchronisée (product_category) ou depuis l'API directe
+    return productSale.product_category || 
+           productSale.product?.category?.name || 
+           'Non catégorisé';
+  }))].filter(cat => cat !== 'Non catégorisé');
 
-                    return (
-                      <tr key={sale.id} className="hover:bg-slate-700/20 transition-colors duration-150">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
-                          {formatDate(sale.createdAt)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-slate-300">
-                          {sale.id}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                          {sale.location?.venue?.name || 'N/A'}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-slate-300">
-                          <div className="flex flex-wrap gap-1">
-                            {categories.length > 0 ? categories.map((cat: string, idx: number) => (
-                              <span key={idx} className="inline-block px-2 py-1 text-xs bg-slate-700/50 text-slate-300 rounded">
-                                {cat}
-                              </span>
-                            )) : <span className="text-slate-500">-</span>}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-white">
-                          <div className="max-w-xs truncate" title={productNames.join(', ')}>
-                            {productNames.length > 0 ? productNames.join(', ') : 'N/A'}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-white">
-                          {parseFloat(sale.total || sale.totalCharged || '0').toFixed(2)} €
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            sale.charged === 'Yes' 
-                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
-                              : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                          }`}>
-                            {sale.charged === 'Yes' ? 'Réussi' : 'Échoué'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-slate-300">
-                          <div className="max-w-[200px] truncate" title={customerEmail}>
-                            {customerEmail || <span className="text-slate-500">-</span>}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                          {discountAmount > 0 ? (
-                            <span className="text-orange-400 font-medium">-{discountAmount.toFixed(2)} €</span>
-                          ) : (
-                            <span className="text-slate-500">-</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          {promoCode ? (
-                            <span className="inline-flex px-2 py-1 text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded">
-                              {promoCode}
-                            </span>
-                          ) : (
-                            <span className="text-slate-500">-</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
+  const productNames = products.map((productSale: any) => {
+    // Depuis la structure synchronisée (product_name) ou depuis l'API directe
+    return productSale.product_name || 
+           productSale.product?.name || 
+           'Produit inconnu';
+  }).filter((name: string) => name !== 'Produit inconnu');
+  
+  // ✅ MONTANT DE RÉDUCTION : Somme des discountValue de chaque productSale
+  const totalDiscountAmount = products.reduce((sum, productSale) => {
+    const discount = parseFloat(
+      productSale.discount_amount || // Depuis sync
+      productSale.discountValue ||   // Depuis API directe
+      '0'
+    ) || 0;
+    return sum + discount;
+  }, 0);
+  
+  // ✅ CODE PROMO : Depuis la vente globale
+const promoCode =
+  sale.promo_code ||
+  sale.promoCode ||
+  sale.couponCode ||
+  sale.voucherCode ||
+  products.map((p: any) => p.voucherCode || p.promoCode || '').filter(Boolean).join(' ') || '';
+  
+  // ✅ EMAIL CLIENT : Depuis la vente globale
+  const customerEmail = sale.client_email ||       // Depuis sync
+                       sale.customer?.email ||    // Depuis API directe
+                       '';
+
+  return (
+    <tr key={sale.id} className="hover:bg-slate-700/20 transition-colors duration-150">
+      {/* Date */}
+		<td className="px-6 py-4 whitespace-nowrap text-sm text-white">
+		  {sale.created_at ? new Date(sale.created_at).toLocaleDateString('fr-FR', {
+			day: '2-digit',
+			month: '2-digit',
+			year: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit'
+		  }) : '-'}
+		</td>
+			  
+      {/* ID Transaction */}
+  {/* Colonne ID Transaction */}
+	<td className="px-6 py-4 text-sm">
+	  {sale.transaction_id ? (
+		<span className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-blue-500/20 text-blue-300 font-mono text-xs border border-blue-500/30">
+		  #{sale.transaction_id}
+		</span>
+	  ) : (
+		<span className="text-slate-500">-</span>
+	  )}
+	</td>
+      
+      {/* Venue */}
+<td className="px-6 py-4 text-sm text-white">
+  {sale.venue_name || sale.location?.venue?.name || 'Venue inconnue'}
+</td>
+      {/* ✅ Catégories */}
+      <td className="px-6 py-4 text-sm text-slate-300">
+	  <div className="flex flex-wrap gap-1">
+		{parseJsonField(sale.categories).length > 0 ? (
+		  parseJsonField(sale.categories).map((cat: string, idx: number) => (
+			<span key={idx} className="inline-block px-2 py-1 text-xs bg-emerald-500/20 text-emerald-300 rounded border border-emerald-500/30">
+			  {cat}
+			</span>
+		  ))
+		) : (
+		  <span className="text-slate-500 italic">Aucune catégorie</span>
+		)}
+	  </div>
+	</td>
+      
+      {/* ✅ Produits */}
+      <td className="px-6 py-4 text-sm text-white">
+	  <div className="space-y-1.5">
+		{parseJsonField(sale.products).length > 0 ? (
+		  parseJsonField(sale.products).map((product: any, idx: number) => (
+			<div key={idx} className="flex items-center">
+			  <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full mr-2 flex-shrink-0"></span>
+			  <span className="font-medium">
+				{product.name}
+				{product.quantity > 1 && (
+				  <span className="text-slate-400 ml-1">×{product.quantity}</span>
+				)}
+			  </span>
+			</div>
+		  ))
+		) : (
+		  <span className="text-orange-400 italic">⚠ Aucun produit</span>
+		)}
+	  </div>
+	</td>
+		  
+      {/* Montant */}
+     <td className="px-6 py-4 text-sm text-right">
+  <span className="font-medium text-white">
+    {sale.total_ttc ? `${sale.total_ttc.toFixed(2)} €` : '0.00 €'}
+  </span>
+</td>
+      
+      {/* Statut */}
+     <td className="px-6 py-4">
+	  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+		sale.status === 'completed' || sale.payment_status === 'completed'
+		  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+		  : sale.status === 'pending' || sale.payment_status === 'pending'
+		  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+		  : 'bg-red-500/20 text-red-300 border border-red-500/30'
+	  }`}>
+		{sale.status === 'completed' || sale.payment_status === 'completed'
+		  ? 'Réussi'
+		  : sale.status === 'pending' || sale.payment_status === 'pending'
+		  ? 'En attente'
+		  : 'Échoué'}
+	  </span>
+	</td>
+      
+      {/* ✅ Email Client */}
+      <td className="px-6 py-4 text-sm">
+  {sale.customer_email || sale.client_email ? (
+    <div className="flex items-center gap-2">
+      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+      </svg>
+      <a 
+        href={`mailto:${sale.customer_email || sale.client_email}`}
+        className="text-blue-400 hover:text-blue-300 hover:underline"
+      >
+        {sale.customer_email || sale.client_email}
+      </a>
+    </div>
+  ) : (
+    <span className="text-slate-500 italic">-</span>
+  )}
+</td>
+      
+      {/* ✅ Montant de la réduction */}
+      <td className="px-6 py-4 text-sm text-right">
+  {sale.discount_amount && sale.discount_amount > 0 ? (
+    <span className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-orange-500/20 text-orange-300 font-medium border border-orange-500/30">
+      -{sale.discount_amount.toFixed(2)} €
+    </span>
+  ) : (
+    <span className="text-slate-500">-</span>
+  )}
+</td>
+      
+      {/* ✅ Code Promo */}
+      <td className="px-6 py-4 whitespace-nowrap text-sm">
+        {promoCode ? (
+          <span className="inline-flex px-2 py-1 text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded">
+            {promoCode}
+          </span>
+        ) : (
+          <span className="text-slate-500">-</span>
+        )}
+      </td>
+    </tr>
+  );
+})}
+
                 </tbody>
               </table>
             </div>

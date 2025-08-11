@@ -1,704 +1,583 @@
-// scripts/sync-vendlive.ts - Version avec synchronisation historique complète
+import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
-// Configuration
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://ojphshzuosbfbftpoigy.supabase.co';
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qcGhzaHp1b3NiZmJ0cG9pZ3kiLCJyb2xlIjoic2VydmljZV9yb2xlIiwiaWF0IjoxNzUxNDUyNzcwLCJleHAiOjIwNjcwMjg3NzB9.ze3DvmYHGmDlOvBaE-SxCDaQwzAF6YoLsKjKPebXU4Q';
+// ✅ CHARGER LES DEUX FICHIERS .env ET .env.local
+dotenv.config(); // Charge .env
+dotenv.config({ path: '.env.local' }); // Charge .env.local
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+// ✅ UTILISER LES VARIABLES D'ENVIRONNEMENT
+const VENDLIVE_API_URL = process.env.VENDLIVE_API_URL || 'https://vendlive.com/api/2.0/order-sales/';
+const VENDLIVE_TOKEN = process.env.VENDLIVE_TOKEN || '2b99d02d6886f67b3a42d82c684108d2eda3d2e1';
+const VENDLIVE_ACCOUNT_ID = process.env.VENDLIVE_ACCOUNT_ID || '295';
 
-const API_BASE = 'https://vendlive.com';
-const API_TOKEN = '2b99d02d6886f67b3a42d82c684108d2eda3d2e1';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-const headers = {
-  'Authorization': `Token ${API_TOKEN}`,
-  'Content-Type': 'application/json',
-};
+// 🔍 DEBUG - Vérifier les variables d'environnement
+console.log('🔍 SUPABASE_URL:', supabaseUrl ? 'OK' : 'MANQUANT');
+console.log('🔍 SUPABASE_SERVICE_ROLE_KEY:', supabaseKey ? 'OK' : 'MANQUANT');
+console.log('🔍 VENDLIVE_TOKEN:', VENDLIVE_TOKEN ? 'OK' : 'MANQUANT');
+console.log('🔍 VENDLIVE_ACCOUNT_ID:', VENDLIVE_ACCOUNT_ID);
 
-// ⚠️ PARAMÈTRES DE SYNCHRONISATION - OPTIMISÉS POUR RÉCUPÉRER TOUT
-const SYNC_MODE = process.env.SYNC_MODE || 'full'; // 'full' pour tout récupérer
-const SYNC_START_DATE = process.env.SYNC_START_DATE || '2023-01-01'; // Date de début pour sync complète
-const MAX_PAGES = parseInt(process.env.MAX_PAGES || '2000'); // Limite de pages à récupérer (augmentée)
-const PAGE_SIZE = parseInt(process.env.PAGE_SIZE || '100'); // Taille de page (augmentée)
-
-// Traitement par batch avec la logique VendLive correcte
-async function processBatch(sales: any[]): Promise<any[]> {
-  return sales.map(sale => {
-    const products = sale.productSales || [];
-    const saleTotalTTC = parseFloat(sale.totalCharged || '0');
-    const saleDiscountTTC = parseFloat(sale.discountTotal || '0');
-    
-    if (products.length === 0) {
-      return [{
-        vendlive_id: String(sale.id),
-        machine_id: sale.machine?.id || 0,
-        machine_name: sale.machine?.friendlyName || 'Unknown',
-        venue_id: sale.location?.venue?.id || null,
-        venue_name: sale.location?.venue?.name || 'Unknown',
-        transaction_id: sale.transaction?.id ? String(sale.transaction.id) : String(sale.id),
-        product_name: 'Vente directe',
-        product_category: 'Non catégorisé',
-        quantity: 1,
-        price_ht: 0,
-        price_ttc: saleTotalTTC,
-        status: sale.charged === 'Yes' ? 'completed' : 'failed',
-        payment_method: sale.paymentMethod || null,
-        client_type: sale.customerType || null,
-        client_email: sale.customerEmail || null,
-        discount_amount: saleDiscountTTC,
-        promo_code: sale.voucherCode || null,
-        created_at: sale.createdAt,
-        synced_at: new Date().toISOString(),
-        raw_data: null
-      }];
-    }
-    
-    // Pour chaque produit, utiliser les champs VendLive
-    return products.map((product: any) => {
-      // ✅ Utiliser les champs VendLive corrects
-      const totalPaidTTC = parseFloat(product.totalPaid || '0');
-      const discountTTC = parseFloat(product.discountValue || '0');
-      const vatAmount = parseFloat(product.vatAmount || '0');
-      const netAmountHT = parseFloat(product.netAmount || '0');
-      const vatRate = parseFloat(product.vatRate || '5.5');
-      
-      // ✅ IMPORTANT : Déterminer le statut correct
-      let status = 'failed'; // Par défaut
-      if (product.vendStatus === 'Success' && !product.isRefunded) {
-        status = 'completed';
-      } else if (product.isRefunded) {
-        status = 'refunded';
-      } else if (product.vendStatus === 'Failure' || product.vendStatus === 'Failed') {
-        status = 'failed';
-      }
-      
-      return {
-        vendlive_id: `${sale.id}_${product.productName || product.name || product.id}`,
-        machine_id: sale.machine?.id || 0,
-        machine_name: sale.machine?.friendlyName || 'Unknown',
-        venue_id: sale.location?.venue?.id || null,
-        venue_name: sale.location?.venue?.name || 'Unknown',
-        transaction_id: sale.transaction?.id ? String(sale.transaction.id) : String(sale.id),
-        product_name: product.productName || product.name || 'Unknown',
-        product_category: product.category?.name || product.productCategory?.name || 'Non catégorisé',
-        quantity: parseInt(product.quantity || '1'),
-        price_ht: netAmountHT,
-        price_ttc: totalPaidTTC,
-        status: status, // ✅ Statut correctement défini
-        payment_method: sale.paymentMethod || null,
-        client_type: sale.customerType || null,
-        client_email: sale.customerEmail || null,
-        discount_amount: discountTTC,
-        promo_code: sale.voucherCode || null,
-        created_at: sale.createdAt,
-        synced_at: new Date().toISOString(),
-        raw_data: null
-      };
-    });
-  }).flat();
+if (!supabaseUrl || !supabaseKey) {
+  console.error('❌ Variables Supabase manquantes dans .env.local !');
+  process.exit(1);
 }
 
-// SYNC PRINCIPALE - OPTIMISÉE POUR RÉCUPÉRER TOUT
-async function syncVendlive() {
-  const startTime = Date.now();
-  console.log('🚀 Synchronisation VendLive → Supabase...');
-  console.log(`📋 Mode: ${SYNC_MODE}`);
-  console.log(`📄 Taille de page: ${PAGE_SIZE}`);
-  console.log(`📊 Limite de pages: ${MAX_PAGES}`);
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+interface VendLiveResponse {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: VendLiveSale[];
+}
+
+interface VendLiveSale {
+  id: number;
+  createdAt: string; // ✅ Corrigé : utilise createdAt au lieu de timestamp
+  productSales: ProductSale[];
+  customer: {
+    id: number;
+    email: string;
+    phoneNumber?: string; // ✅ Corrigé selon la vraie API
+  } | null;
+  machine: {
+    id: number;
+    friendlyName: string;
+  };
+  location: {
+    venue: {
+      id: number;
+      name: string;
+      externalId: string | null;
+    };
+    id: number; // ✅ Ajouté
+    description: string; // ✅ Ajouté
+  };
+  transaction: {
+    id: number;
+  } | null;
+  voucherCode: string | null;
+  history: {
+    id: number;
+  };
+  // ✅ Ajout des champs manquants selon la vraie API
+  total: string;
+  totalCharged: string;
+  discountTotal: string;
+  netVat: string;
+  charged: string;
+  locationName: string;
+}
+
+interface ProductSale {
+  id: number;
+  timestamp: string; // ✅ timestamp existe bien au niveau productSale
+  netAmount: string;
+  totalPaid: string;
+  price: string; // ✅ Ajouté
+  discountValue: string | null;
+  isRefunded: boolean;
+  vendStatus: string;
+  voucherCode: string | null; // ✅ Ajouté
+  product: {
+    id: number;
+    name: string;
+    externalId: string | null; // ✅ Ajouté
+    category: {
+      id: number;
+      name: string;
+    };
+  };
+}
+
+interface Order {
+  vendlive_id: string;
+  machine_id: number;
+  machine_name: string;
+  venue_id: number | null;
+  venue_name: string | null;
+  transaction_id: string | null;
+  product_name: string;
+  product_category: string;
+  quantity: number;
+  price_ht: number;
+  price_ttc: number;
+  discount_amount: number;
+  promo_code: string | null;
+  status: string;
+  payment_method: string | null;
+  client_type: string;
+  client_email: string | null;
+  created_at: Date;
+  raw_data: string;
+}
+
+interface Sale {
+  vendlive_id: string;
+  transaction_id: string;
+  machine_id: number;
+  machine_name: string;
+  venue_id: number | null;
+  venue_name: string | null;
+  customer_email: string | null;
+  promo_code: string | null;
+  total_ttc: number;
+  total_ht: number;
+  discount_amount: number;
+  nb_products: number;
+  status: string;
+  payment_status: string;
+  created_at: Date;
+  updated_at: Date;
+  products: any[]; // ✅ JSON avec la liste des produits
+  categories: string[]; // ✅ Liste des catégories uniques
+}
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// ✅ FONCTION POUR MAPPER LES STATUTS VENDLIVE VERS LES STATUTS SUPABASE
+function mapStatus(vendStatus: string): string {
+  const statusMap: Record<string, string> = {
+    'success': 'completed',
+    'delivered': 'completed', 
+    'paid': 'completed',
+    'refunded': 'refunded',
+    'failure': 'failed',
+    'failed': 'failed',
+    'canceled': 'cancelled',
+    'cancelled': 'cancelled',
+    'pending': 'pending'
+  };
   
-  try {
-    // 1. Déterminer la date de début
-    let lastSyncDate: Date;
-    
-    if (SYNC_MODE === 'full') {
-      // Mode full : prendre la date configurée
-      lastSyncDate = new Date(SYNC_START_DATE);
-      console.log(`📅 Synchronisation COMPLÈTE depuis: ${lastSyncDate.toISOString()}`);
-    } else {
-      // Mode incrémental : récupérer la dernière sync
-      const { data: lastSync } = await supabase
-        .from('orders')
-        .select('created_at')
-        .order('created_at', { ascending: false })
-        .limit(1);
-      
-      if (lastSync && lastSync.length > 0) {
-        lastSyncDate = new Date(lastSync[0].created_at);
-        // Reculer d'un jour pour être sûr de ne rien rater
-        lastSyncDate.setDate(lastSyncDate.getDate() - 1);
-      } else {
-        // Pas de données, commencer depuis le début configuré
-        lastSyncDate = new Date(SYNC_START_DATE);
-      }
-      console.log(`📅 Synchronisation incrémentale depuis: ${lastSyncDate.toISOString()}`);
+  const normalized = vendStatus?.toLowerCase() || 'unknown';
+  return statusMap[normalized] || 'completed'; // Par défaut completed pour Success
+}	
+
+
+async function fetchVendLiveData(
+  startDate: string,
+  endDate: string,
+  page: number = 1
+): Promise<VendLiveResponse> {
+  if (!VENDLIVE_TOKEN) {
+    throw new Error('VENDLIVE_TOKEN manquant. Définis-le dans .env.local ou via $env:VENDLIVE_TOKEN');
+  }
+
+  const url = new URL(VENDLIVE_API_URL);
+  url.searchParams.append('accountId', VENDLIVE_ACCOUNT_ID);
+  url.searchParams.append('startDate', startDate);
+  url.searchParams.append('endDate', endDate);
+  url.searchParams.append('page', page.toString());
+  url.searchParams.append('pageSize', '100');
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      Authorization: `Token ${VENDLIVE_TOKEN}`
     }
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error(`❌ Erreur API VendLive: ${response.status} ${response.statusText}`);
+    console.error(`❌ Réponse: ${errorBody}`);
+    throw new Error(`Erreur API VendLive: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json() as Promise<VendLiveResponse>;
+}
+
+function generateUniqueId(sale: VendLiveSale, productSale: ProductSale, index: number, timestamp: number): string {
+  // Générer un ID vraiment unique basé sur plusieurs facteurs
+  const saleId = sale.id;
+  const productSaleId = productSale.id;
+  const machineId = sale.machine.id;
+  const historyId = sale.history.id;
+  
+  // Utiliser timestamp pour garantir l'unicité même avec les mêmes IDs
+  const uniqueId = `${saleId}_${productSaleId}_${machineId}_${historyId}_${index}_${timestamp}`;
+  
+  return uniqueId;
+}
+
+// ✅ TRAITEMENT DE LA TABLE ORDERS (existant)
+async function processBatch(sales: VendLiveSale[]): Promise<number> {
+  const orders: Order[] = [];
+  let globalCounter = Date.now(); // Pour garantir l'unicité
+  let skippedUnknown = 0;
+
+  for (const sale of sales) {
+    console.log(`🔍 DEBUG Sale ${sale.id}:`);
+    console.log(`  - productSales.length: ${sale.productSales?.length || 0}`);
     
-    // 2. Récupérer TOUTES les ventes depuis cette date
-    let allSales: any[] = [];
-    let nextUrl: string | null = `${API_BASE}/api/2.0/order-sales/?accountId=295&pageSize=${PAGE_SIZE}&ordering=-createdAt`;
-    let pageCount = 0;
-    let oldestDateFound = new Date();
-    let consecutiveErrors = 0;
-    const maxConsecutiveErrors = 5;
-    
-    console.log(`🔄 Début de la récupération des données...`);
-    
-    while (nextUrl && pageCount < MAX_PAGES) {
-      pageCount++;
-      console.log(`📄 Chargement page ${pageCount}/${MAX_PAGES}... (${allSales.length} ventes récupérées)`);
-      
-      // Pause progressive pour éviter les timeouts
-      if (pageCount > 1) {
-        const pauseTime = Math.min(pageCount * 100, 3000); // Maximum 3 secondes
-        await new Promise(resolve => setTimeout(resolve, pauseTime));
-      }
-      
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 secondes timeout
-        
-        const response = await fetch(nextUrl, { 
-          headers,
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-          if (response.status === 429) {
-            console.log('⏳ Rate limit atteint, pause de 15 secondes...');
-            await new Promise(resolve => setTimeout(resolve, 15000));
-            pageCount--; // Ne pas compter cette tentative
-            continue;
-          }
-          throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
-        }
-        
-        const data = await response.json();
-        const pageSales = data.results || [];
-        
-        // Reset compteur d'erreurs en cas de succès
-        consecutiveErrors = 0;
-        
-        // ✅ Log plus détaillé
-        if (pageSales.length > 0) {
-          const oldestInPage = new Date(pageSales[pageSales.length - 1].createdAt);
-          const newestInPage = new Date(pageSales[0].createdAt);
-          
-          console.log(`  📊 Page ${pageCount}: ${pageSales.length} ventes`);
-          console.log(`  📅 Période: ${oldestInPage.toISOString().split('T')[0]} → ${newestInPage.toISOString().split('T')[0]}`);
-          
-          if (oldestInPage < oldestDateFound) {
-            oldestDateFound = oldestInPage;
-          }
-        } else {
-          console.log(`  📋 Page ${pageCount}: vide, arrêt de la récupération`);
-          break;
-        }
-        
-        // Debug : voir la structure d'un productSale sur la première page
-        if (pageCount === 1 && pageSales.length > 0 && pageSales[0].productSales?.length > 0) {
-          console.log('📋 Structure d\'un productSale:');
-          console.log(JSON.stringify(pageSales[0].productSales[0], null, 2));
-        }
-        
-        // ✅ En mode FULL, prendre TOUTES les ventes sans filtrage par date
-        if (SYNC_MODE === 'full') {
-          allSales = [...allSales, ...pageSales];
-          console.log(`  ✅ Mode FULL: ${pageSales.length} ventes ajoutées (Total: ${allSales.length})`);
-        } else {
-          // Mode incrémental : filtrer par date
-          const newSales = pageSales.filter((sale: any) => 
-            new Date(sale.createdAt) > lastSyncDate
-          );
-          allSales = [...allSales, ...newSales];
-          console.log(`  ✅ Mode INCRÉMENTAL: ${newSales.length}/${pageSales.length} ventes nouvelles (Total: ${allSales.length})`);
-          
-          // Si on a atteint des ventes plus anciennes que notre cible, on peut arrêter
-          if (oldestDateFound < lastSyncDate && newSales.length === 0) {
-            console.log('✅ Toutes les nouvelles ventes récupérées');
-            break;
-          }
-        }
-        
-        nextUrl = data.next;
-        
-        // ✅ Log de progression plus fréquent
-        if (allSales.length > 0 && allSales.length % 1000 === 0) {
-          console.log(`🚀 PROGRESSION: ${allSales.length} ventes récupérées...`);
-          console.log(`📊 Estimation: ${Math.round((pageCount / MAX_PAGES) * 100)}% des pages possibles traitées`);
-        }
-        
-      } catch (fetchError) {
-        consecutiveErrors++;
-        console.error(`❌ Erreur page ${pageCount} (${consecutiveErrors}/${maxConsecutiveErrors}):`, fetchError.message);
-        
-        if (fetchError.name === 'AbortError') {
-          console.log('⏳ Timeout de 45s atteint, pause de 10 secondes...');
-          await new Promise(resolve => setTimeout(resolve, 10000));
-        } else if (fetchError.code === 'ECONNRESET' || fetchError.code === 'ENOTFOUND') {
-          console.log('🌐 Erreur réseau, pause de 5 secondes puis reprise...');
-          await new Promise(resolve => setTimeout(resolve, 5000));
-        }
-        
-        if (consecutiveErrors >= maxConsecutiveErrors) {
-          console.error(`❌ Trop d'erreurs consécutives (${consecutiveErrors}), arrêt`);
-          if (allSales.length === 0) {
-            throw new Error('Impossible de récupérer des données');
-          }
-          console.warn(`⚠️ Continuation avec ${allSales.length} ventes récupérées`);
-          break;
-        }
-        
-        pageCount--; // Ne pas compter cette tentative ratée
-        continue;
-      }
+    if (!sale.productSales || sale.productSales.length === 0) {
+      console.log(`  ⚠️ Pas de productSales pour la vente ${sale.id}`);
+      continue;
     }
+
+    // Débugger le premier productSale
+    const firstProductSale = sale.productSales[0];
+    console.log(`  - Premier productSale.product.name: ${firstProductSale.product?.name || 'UNDEFINED'}`);
+    console.log(`  - Premier productSale.product.category.name: ${firstProductSale.product?.category?.name || 'UNDEFINED'}`);
     
-    // ✅ Log final plus détaillé
-    console.log(`\n🎯 RÉSULTAT DE LA RÉCUPÉRATION:`);
-    console.log(`  📦 ${allSales.length} ventes récupérées au total`);
-    console.log(`  📄 ${pageCount} pages traitées sur ${MAX_PAGES} maximum`);
-    if (allSales.length > 0) {
-      console.log(`  📅 Période couverte: ${oldestDateFound.toISOString().split('T')[0]} → ${allSales[0]?.createdAt?.split('T')[0] || 'N/A'}`);
-      
-      // Stats par venue
-      const venueStats = allSales.reduce((acc, sale) => {
-        const venue = sale.location?.venue?.name || 'Unknown';
-        acc[venue] = (acc[venue] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
-      
-      console.log(`  🏢 Venues trouvées: ${Object.keys(venueStats).length}`);
-      const topVenues = Object.entries(venueStats)
-        .sort(([,a], [,b]) => b - a)
-        .slice(0, 5);
-      topVenues.forEach(([venue, count]) => {
-        console.log(`    - ${venue}: ${count} ventes`);
-      });
-    }
+    // Traiter chaque productSale
+	sale.productSales.forEach((productSale, psIndex) => {
+  globalCounter++;
+  
+   const uniqueId = generateUniqueId(sale, productSale, psIndex, globalCounter);
+  
+  // SI pas de product, logger la structure complète
+const hasProduct = !!productSale.product?.name;
+const productName =
+  (hasProduct && productSale.product!.name) || 'Produit inconnu';
+const productCategory =
+  (hasProduct && (productSale.product!.category?.name || 'Non catégorisé'))
+  || 'Non catégorisé';
+
+
+  const customerEmail = sale.customer?.email || null;
+  const promoCode = productSale.voucherCode || sale.voucherCode || null;
+  const discountAmount = parseFloat(productSale.discountValue || "0");
+const saleTimestamp = productSale.timestamp || sale.createdAt || null;
+  
+  // 3️⃣ Déterminer le statut
+	let status = "completed";
+	if (productSale.isRefunded) {
+	  status = "refunded";
+	} else if (productSale.vendStatus) {
+	  status = mapStatus(productSale.vendStatus);
+	}
+
+  // 4️⃣ Logger APRÈS avoir défini toutes les variables
+  console.log(`    → EXTRACTED: "${productName}" | Cat: "${productCategory}" | Status: ${status}`);
+
+  // 5️⃣ Créer l'objet order
+const order = {
+  vendlive_id: uniqueId,
+  sale_id: sale.id,
+  product_sale_id: productSale.id,
+  history_id: sale.history?.id || null,
+  machine_id: sale.machine?.id || null,
+  machine_name: sale.machine?.friendlyName || null,
+  venue_id: sale.location?.venue?.id || null,
+  venue_name: sale.location?.venue?.name || null,
+  transaction_id: String(sale.id),
+  product_id: productSale.product?.id || null,
+  product_name: String(productName || 'Produit inconnu'),
+  product_category: String(productCategory || 'Non catégorisé'),
+  quantity: 1,
+  price_ht: parseFloat(productSale.netAmount || '0'),
+  price_ttc: parseFloat(productSale.totalPaid || '0'),
+  discount_amount: parseFloat(productSale.discountValue || '0'),
+  vat_rate: productSale.vatRate ? parseFloat(productSale.vatRate) : null,
+  status: mapStatus(productSale.vendStatus || (productSale.isRefunded ? 'refunded' : 'success')),
+  vend_status: productSale.vendStatus || null,
+  is_refunded: !!productSale.isRefunded,
+  payment_method: null,
+  promo_code: productSale.voucherCode || sale.voucherCode || null,
+  client_type: 'unknown',
+  client_email: sale.customer?.email || null,
+  created_at: new Date(productSale.timestamp || sale.createdAt || Date.now()),
+  raw_data: { sale, productSale }
+};
+
+
+  orders.push(order);
+});
+  }
+
+  if (skippedUnknown > 0) {
+    console.log(`⏭️ ${skippedUnknown} produits ignorés (données manquantes)`);
+  }
+
+  console.log(`📊 Batch orders traité: ${orders.length} commandes à insérer`);
+
+  if (orders.length > 0) {
+    await insertOrdersBatch(orders);
+  }
+  
+  return orders.length;
+}
+
+// 🆕 NOUVEAU : TRAITEMENT DE LA TABLE SALES
+async function processSalesTable(sales: VendLiveSale[]): Promise<number> {
+  const salesRows: Sale[] = [];
+  
+  for (const sale of sales) {
+    // 🆕 Construire la liste des produits pour cette commande
+const productsArray = (sale.productSales || []).map(ps => {
+  const hasProduct = !!ps.product && !!ps.product.name;
+  const name = hasProduct
+    ? ps.product.name
+    : (ps?.promotion?.name || (ps.vendStatus ? `Produit ${ps.vendStatus}` : 'Produit inconnu'));
+  const category = hasProduct
+    ? (ps.product?.category?.name || 'Non catégorisé')
+    : (ps.isRefunded
+        ? 'Remboursement'
+        : (['failure','failed','canceled','cancelled','pending']
+            .includes((ps.vendStatus || '').toLowerCase())
+              ? 'Transaction'
+              : 'Non catégorisé'));
+
+  return {
+    id: ps.id,
+    name,
+    category,
+    quantity: 1,
+    price_ttc: parseFloat(ps.totalPaid || "0"),
+    price_ht: parseFloat(ps.netAmount || "0"),
+    discount: parseFloat(ps.discountValue || "0"),
+    vendor_status: ps.vendStatus || null,
+    is_refunded: ps.isRefunded || false,
+    is_unknown: !hasProduct, // 🆕 pour diagnostic côté UI si tu veux
+  };
+});
+
+const validProducts = productsArray; // ✅ on ne filtre plus
+const uniqueCategories = Array.from(new Set(
+  productsArray.map(p => p.category).filter(Boolean)
+));
+
+    // 🆕 Créer la ligne pour la table sales
+    const saleRow: Sale = {
+      vendlive_id: sale.id.toString(),
+      transaction_id: sale.id.toString(),
+      machine_id: sale.machine.id,
+      machine_name: sale.machine.friendlyName,
+      venue_id: sale.location?.venue?.id || null,
+      venue_name: sale.location?.venue?.name || null,
+      customer_email: sale.customer?.email || null, 
+      promo_code: sale.voucherCode || null,
+      total_ttc: parseFloat(sale.total || "0"),
+      total_ht: parseFloat(sale.netVat || "0"),
+      discount_amount: parseFloat(sale.discountTotal || "0"),
+      nb_products: validProducts.length,
+      status: sale.charged === 'Yes' ? 'completed' : 'failed',
+      payment_status: sale.charged === 'Yes' ? 'success' : 'failed',
+      created_at: new Date(sale.createdAt),
+      updated_at: new Date(),
+      products: validProducts, // 🆕 Le JSON avec tous les produits
+      categories: uniqueCategories // 🆕 Les catégories uniques
+    };
+
+    salesRows.push(saleRow);
     
-    if (allSales.length === 0) {
-      console.log('⚠️ AUCUNE vente récupérée !');
-      await supabase.from('sync_logs').insert({
-        sync_type: 'vendlive_orders',
-        records_synced: 0,
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-        started_at: new Date(startTime).toISOString(),
-        last_vendlive_id: null,
-        metadata: {
-          mode: SYNC_MODE,
-          lastSyncDate: lastSyncDate.toISOString(),
-          pagesProcessed: pageCount,
-          message: 'Aucune nouvelle vente trouvée'
-        }
-      });
-      console.log(`⏱️ Durée: ${(Date.now() - startTime) / 1000}s`);
-      return;
-    }
-    
-    // 3. Traiter TOUTES les ventes avec la logique correcte
-    console.log(`\n💾 TRAITEMENT DES DONNÉES...`);
-    const ordersToInsert = await processBatch(allSales);
-    console.log(`✅ ${ordersToInsert.length} lignes prêtes pour insertion`);
-    
-    // 4. Debug : afficher un exemple
-    if (ordersToInsert.length > 0) {
-      console.log('\n📋 Exemple de données à insérer:');
-      const example = ordersToInsert.find(o => o.discount_amount > 0) || ordersToInsert[0];
-      console.log(JSON.stringify(example, null, 2));
-    }
-    
-    // 5. Calculer les totaux pour vérification
-    console.log(`\n📊 ANALYSE DES DONNÉES...`);
-    const totalByVenue = ordersToInsert.reduce((acc, order) => {
-      if (order.status === 'completed') {
-        const venue = order.venue_name;
-        acc[venue] = acc[venue] || { revenue_ttc: 0, revenue_ht: 0, discount: 0, count: 0 };
-        acc[venue].revenue_ttc += order.price_ttc;
-        acc[venue].revenue_ht += order.price_ht;
-        acc[venue].discount += order.discount_amount;
-        acc[venue].count++;
-      }
+    const productNames = validProducts.map(p => p.name).join(', ');
+    console.log(`✅ Commande ${sale.id}: ${validProducts.length} produits - ${productNames}`);
+  }
+	console.log(`📤 Aperçu des données à insérer:`, {
+	  vendlive_id: salesRows[0].vendlive_id,  // ✅ salesRows existe
+	  product_name: salesRows[0].products[0]?.name,
+	  categories: salesRows[0].categories,
+	  created_at: salesRows[0].created_at
+	});
+
+  console.log(`📊 Batch sales traité: ${salesRows.length} commandes à insérer`);
+
+  if (salesRows.length > 0) {
+    await insertSalesBatch(salesRows);
+  }
+
+  return salesRows.length;
+}
+
+async function insertOrdersBatch(orders: Order[]): Promise<void> {
+  if (orders.length === 0) return;
+
+  console.log(`📤 Insertion orders: ${orders.length} lignes...`);
+
+  // ✅ DÉDUPLICATION GLOBALE AVANT INSERTION
+  const uniqueOrders = Object.values(
+    orders.reduce((acc, order) => {
+      acc[order.vendlive_id] = order; // Garde la dernière occurrence
       return acc;
-    }, {} as Record<string, any>);
+    }, {} as Record<string, Order>)
+  );
+
+  if (uniqueOrders.length !== orders.length) {
+    console.log(`🔧 Doublons supprimés: ${orders.length} → ${uniqueOrders.length} lignes uniques`);
+  }
+
+  // ✅ INSERTION PAR PETITS SOUS-BATCHS POUR ÉVITER CONFLITS
+  const BATCH_SIZE = 200;
+  const totalBatches = Math.ceil(uniqueOrders.length / BATCH_SIZE);
+  
+  for (let i = 0; i < totalBatches; i++) {
+    const batch = uniqueOrders.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
     
-    console.log('💰 CA et discounts par venue:');
-    Object.entries(totalByVenue)
-      .sort(([,a], [,b]) => b.revenue_ttc - a.revenue_ttc)
-      .slice(0, 10)
-      .forEach(([venue, data]) => {
-        console.log(`  - ${venue}:`);
-        console.log(`    Commandes: ${data.count}`);
-        console.log(`    CA TTC: ${data.revenue_ttc.toFixed(2)}€`);
-        console.log(`    CA HT: ${data.revenue_ht.toFixed(2)}€`);
-        console.log(`    Discounts: ${data.discount.toFixed(2)}€`);
-      });
-    
-    // 6. Insertion par batch avec upsert
-    console.log(`\n📤 INSERTION EN BASE...`);
-    const batchSize = 500;
-    let totalInserted = 0;
-    
-    for (let i = 0; i < ordersToInsert.length; i += batchSize) {
-      const batch = ordersToInsert.slice(i, i + batchSize);
-      const batchNumber = Math.floor(i/batchSize) + 1;
-      const totalBatches = Math.ceil(ordersToInsert.length/batchSize);
-      
-      console.log(`📤 Insertion batch ${batchNumber}/${totalBatches}: ${batch.length} lignes...`);
-      
-      const { error: insertError } = await supabase
-        .from('orders')
-        .upsert(batch, {
-          onConflict: 'vendlive_id',
-          ignoreDuplicates: false
-        });
-      
-      if (insertError) {
-        console.error('❌ Erreur insertion batch:', insertError);
-        console.error('Détails:', JSON.stringify(insertError, null, 2));
-        throw insertError;
-      }
-      
-      totalInserted += batch.length;
-      const progress = Math.round((totalInserted / ordersToInsert.length) * 100);
-      console.log(`✅ Batch ${batchNumber}: ${batch.length} lignes insérées (${progress}% - Total: ${totalInserted})`);
-      
-      // Petite pause entre les batch pour ne pas surcharger
-      if (batchNumber < totalBatches) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-    }
-    
-    // 7. Mise à jour de la table sales
+    console.log(`📤 Insertion orders sous-batch ${i + 1}/${totalBatches}: ${batch.length} lignes`);
+
     try {
-      console.log('\n📊 Mise à jour de la table sales...');
-      await updateSalesTable(allSales);
+      const { error } = await supabase
+		await supabase
+		  .from('orders')
+		  .upsert(batch, { 
+			onConflict: 'vendlive_id',
+			ignoreDuplicates: false 
+		  });
+      if (error) {
+        console.error(`❌ Erreur orders sous-batch ${i + 1}:`, error);
+        throw error;
+      }
+
+      console.log(`✅ Orders sous-batch ${i + 1}/${totalBatches} inséré avec succès`);
+
     } catch (err) {
-      console.warn('⚠️ Mise à jour de la table sales échouée:', err.message);
+      console.error(`❌ Erreur fatale orders sous-batch ${i + 1}:`, err);
+      throw err;
     }
-    
-    // 8. Log final
-    await supabase.from('sync_logs').insert({
-      sync_type: 'vendlive_orders',
-      records_synced: totalInserted,
-      status: 'completed',
-      completed_at: new Date().toISOString(),
-      started_at: new Date(startTime).toISOString(),
-      last_vendlive_id: allSales[0]?.id || null,
-      metadata: {
-        mode: SYNC_MODE,
-        lastSyncDate: lastSyncDate.toISOString(),
-        pagesProcessed: pageCount,
-        oldestDateFound: oldestDateFound.toISOString(),
-        newestDateFound: allSales[0]?.createdAt || null,
-        salesRetrieved: allSales.length,
-        ordersInserted: totalInserted,
-        venuesFound: Object.keys(totalByVenue).length
+
+    if (i < totalBatches - 1) {
+      await sleep(500);
+    }
+  }
+
+  console.log(`✅ Tous les orders sous-batchs insérés: ${uniqueOrders.length} lignes au total`);
+}
+
+// 🆕 NOUVEAU : INSERTION POUR LA TABLE SALES
+async function insertSalesBatch(salesRows: Sale[]): Promise<void> {
+  if (salesRows.length === 0) return;
+
+  console.log(`📤 Insertion sales: ${salesRows.length} commandes...`);
+
+  try {
+    const { error } = await supabase
+      .from('sales')
+      .upsert(salesRows, { 
+        onConflict: 'vendlive_id',
+        ignoreDuplicates: false 
+      });
+
+    if (error) {
+      console.error(`❌ Erreur insertion sales:`, error);
+      throw error;
+    }
+
+    console.log(`✅ ${salesRows.length} commandes insérées dans sales avec succès`);
+
+  } catch (err) {
+    console.error(`❌ Erreur fatale insertion sales:`, err);
+    throw err;
+  }
+}
+
+async function clearOldData(): Promise<void> {
+  console.log('🗑️ Suppression des anciennes données...');
+  
+  // Supprimer orders
+  const { error: ordersError } = await supabase
+    .from('orders')
+    .delete()
+    .neq('vendlive_id', '');
+
+  if (ordersError) {
+    console.error('❌ Erreur lors de la suppression orders:', ordersError);
+    throw ordersError;
+  }
+
+  // Supprimer sales
+  const { error: salesError } = await supabase
+    .from('sales')
+    .delete()
+    .neq('vendlive_id', '');
+
+  if (salesError) {
+    console.error('❌ Erreur lors de la suppression sales:', salesError);
+    throw salesError;
+  }
+
+  console.log('✅ Anciennes données supprimées (orders + sales)');
+}
+
+async function syncVendlive(): Promise<void> {
+  const syncMode = process.env.SYNC_MODE || 'incremental';
+  
+  // 🆕 RÉCUPÉRER TOUTES LES DONNÉES - Période large par défaut
+  const startDate = process.env.SYNC_START_DATE || '2020-01-01'; // ✅ Date très ancienne
+  const endDate = process.env.SYNC_END_DATE || new Date().toISOString().split('T')[0];
+  const maxPages = parseInt(process.env.MAX_PAGES || '0'); // ✅ 0 = pas de limite
+
+  console.log(`🚀 Synchronisation VendLive (${syncMode})`);
+  console.log(`📅 Période: ${startDate} → ${endDate}`);
+  console.log(`📄 Pages max: ${maxPages === 0 ? 'ILLIMITÉES' : maxPages}`);
+
+  if (syncMode === 'full') {
+    await clearOldData();
+  }
+
+  let page = 1;
+  let totalSales = 0;
+  let totalOrders = 0;
+  let totalSalesRows = 0;
+
+  try {
+    while (maxPages === 0 || page <= maxPages) { // ✅ Pas de limite si maxPages = 0
+      console.log(`\n📄 === PAGE ${page} ===`);
+      
+      const data = await fetchVendLiveData(startDate, endDate, page);
+      
+      console.log(`📊 Page ${page}: ${data.results.length} ventes récupérées`);
+      
+      if (data.results.length === 0) {
+        console.log('✅ Aucune donnée sur cette page, arrêt');
+        break;
       }
-    });
-    
-    const duration = (Date.now() - startTime) / 1000;
-    console.log(`\n🎉 SYNCHRONISATION TERMINÉE !`);
-    console.log(`⏱️ Durée: ${Math.round(duration)}s (${Math.round(duration/60)}min)`);
-    console.log(`📊 ${allSales.length} ventes → ${ordersToInsert.length} lignes → ${totalInserted} insérées`);
-    console.log(`🏢 ${Object.keys(totalByVenue).length} venues avec des ventes`);
-    console.log(`💰 CA total: ${Object.values(totalByVenue).reduce((sum, v) => sum + v.revenue_ttc, 0).toFixed(2)}€`);
-    
-    // 9. Mettre à jour les stats journalières pour toutes les dates affectées
-    if (SYNC_MODE === 'full') {
-      try {
-        console.log('\n📊 Mise à jour complète des stats journalières...');
-        await updateAllDailyStats();
-      } catch (err) {
-        console.warn('⚠️ Mise à jour des stats journalières échouée:', err.message);
+
+      // Traiter cette page pour orders
+      const ordersProcessed = await processBatch(data.results);
+      
+      // 🆕 NOUVEAU : Traiter cette page pour sales aussi
+      const salesProcessed = await processSalesTable(data.results);
+      
+      totalSales += data.results.length;
+      totalOrders += ordersProcessed;
+      totalSalesRows += salesProcessed;
+      
+      // Pause entre les pages pour éviter la surcharge
+      await sleep(1000);
+      
+      page++;
+      
+      // Arrêter s'il n'y a plus de pages
+      if (!data.next) {
+        console.log('✅ Dernière page atteinte - Toutes les données récupérées');
+        break;
       }
-    } else {
-      try {
-        await updateDailyStats();
-      } catch (err) {
-        console.warn('⚠️ Mise à jour des stats journalières échouée:', err.message);
+      
+      // ✅ Sécurité : éviter une boucle infinie
+      if (page > 1000) {
+        console.log('⚠️ Limite de sécurité atteinte (1000 pages)');
+        break;
       }
     }
-    
+
+    console.log(`\n🎉 SYNCHRONISATION TERMINÉE`);
+    console.log(`📊 Total ventes API traitées: ${totalSales}`);
+    console.log(`📦 Total lignes orders générées: ${totalOrders}`);
+    console.log(`🛍️ Total lignes sales générées: ${totalSalesRows}`);
+
   } catch (error) {
-    console.error('\n❌ ERREUR FATALE:', error);
-    await supabase.from('sync_logs').insert({
-      sync_type: 'vendlive_orders',
-      status: 'failed',
-      error_message: error.message,
-      completed_at: new Date().toISOString(),
-      started_at: new Date(startTime).toISOString(),
-      records_synced: 0,
-      last_vendlive_id: null,
-      metadata: {
-        mode: SYNC_MODE,
-        error: error.toString(),
-        stack: error.stack
-      }
-    });
+    console.error('❌ Erreur fatale:', error);
     throw error;
   }
 }
 
-// Mise à jour de la table sales avec la logique VendLive correcte
-async function updateSalesTable(vendliveSales: any[]) {
-  console.log('📊 Mise à jour de la table sales...');
-  
-  const salesToUpsert = vendliveSales.map(sale => {
-    // ✅ Calculer le total depuis les productSales avec totalPaid
-    let totalTTC = 0;
-    let totalHT = 0;
-    let discountTTC = 0;
-    let hasSuccessfulProduct = false;
-    
-    // Parcourir tous les produits pour calculer le total
-    if (sale.productSales && sale.productSales.length > 0) {
-      sale.productSales.forEach((product: any) => {
-        if (product.vendStatus === 'Success' && !product.isRefunded) {
-          hasSuccessfulProduct = true;
-          totalTTC += parseFloat(product.totalPaid || '0');
-          totalHT += parseFloat(product.netAmount || '0');
-          discountTTC += parseFloat(product.discountValue || '0');
-        }
-        // Si vendStatus = 'Failure', on ne compte pas ce produit
-      });
-    } else {
-      // Pas de productSales, utiliser les valeurs globales si Success
-      if (sale.charged === 'Yes') {
-        hasSuccessfulProduct = true;
-        totalTTC = parseFloat(sale.totalCharged || '0');
-        totalHT = totalTTC / 1.055;
-        discountTTC = parseFloat(sale.discountTotal || '0');
-      }
-    }
-    
-    // Déterminer le statut global
-    let status = 'failed';
-    if (hasSuccessfulProduct) {
-      status = 'completed';
-    } else if (sale.productSales?.every((ps: any) => ps.isRefunded)) {
-      status = 'refunded';
-    }
-    
-    return {
-      vendlive_id: String(sale.id),
-      transaction_id: sale.transaction?.id ? String(sale.transaction.id) : String(sale.id),
-      venue_id: sale.location?.venue?.id || null,
-      venue_name: sale.location?.venue?.name || 'Unknown',
-      machine_id: sale.machine?.id || 0,
-      machine_name: sale.machine?.friendlyName || 'Unknown',
-      customer_email: sale.customerEmail || sale.customer?.email || null,
-      promo_code: sale.voucherCode || null,
-      total_ttc: totalTTC, // ✅ Somme des totalPaid avec vendStatus Success
-      total_ht: totalHT,
-      discount_amount: discountTTC,
-      nb_products: sale.productSales?.length || 1,
-      status: status,
-      payment_status: sale.paymentStatusDisplay || sale.paymentStatus,
-      created_at: sale.createdAt,
-      updated_at: new Date().toISOString()
-    };
-  });
-  
-  // Insérer par batch
-  const batchSize = 500;
-  let totalSalesInserted = 0;
-  
-  for (let i = 0; i < salesToUpsert.length; i += batchSize) {
-    const batch = salesToUpsert.slice(i, i + batchSize);
-    
-    const { error } = await supabase
-      .from('sales')
-      .upsert(batch, {
-        onConflict: 'vendlive_id',
-        ignoreDuplicates: false
-      });
-    
-    if (error) {
-      console.error('❌ Erreur mise à jour sales:', error);
-      throw error;
-    }
-    
-    totalSalesInserted += batch.length;
-    console.log(`✅ Sales batch ${Math.floor(i/batchSize) + 1}: ${batch.length} ventes (Total: ${totalSalesInserted})`);
-  }
-  
-  console.log(`✅ ${salesToUpsert.length} ventes mises à jour dans la table sales`);
-}
-
-// Mettre à jour les stats journalières (aujourd'hui seulement)
-async function updateDailyStats() {
-  console.log('📊 Mise à jour des stats journalières...');
-  
-  const today = new Date().toISOString().split('T')[0];
-  
-  // Supprimer les stats du jour
-  await supabase
-    .from('daily_stats')
-    .delete()
-    .eq('date', today);
-  
-  // Utiliser la table sales
-  const { data: salesData } = await supabase
-    .from('sales')
-    .select('*')
-    .gte('created_at', today + 'T00:00:00')
-    .lt('created_at', today + 'T23:59:59');
-  
-  if (salesData && salesData.length > 0) {
-    // Grouper par venue depuis sales
-    const statsByVenue = salesData.reduce((acc, sale) => {
-      const key = `${sale.venue_id}_${sale.venue_name}`;
-      if (!acc[key]) {
-        acc[key] = {
-          date: today,
-          venue_id: sale.venue_id,
-          venue_name: sale.venue_name,
-          machine_id: sale.machine_id || 0,
-          machine_name: sale.machine_name,
-          total_orders: 0,
-          successful_orders: 0,
-          refunded_orders: 0,
-          total_revenue_ht: 0,
-          total_revenue_ttc: 0,
-          total_discount: 0,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-      }
-      
-      // Ne pas compter les refunded dans total_orders
-      if (sale.status !== 'refunded') {
-        acc[key].total_orders++;
-      }
-      if (sale.status === 'completed') {
-        acc[key].successful_orders++;
-        acc[key].total_revenue_ttc += parseFloat(sale.total_ttc) || 0;
-        acc[key].total_revenue_ht += parseFloat(sale.total_ht) || 0;
-        acc[key].total_discount += parseFloat(sale.discount_amount) || 0;
-      }
-      if (sale.status === 'refunded') {
-        acc[key].refunded_orders++;
-      }
-      
-      return acc;
-    }, {} as Record<string, any>);
-    
-    const statsToInsert = Object.values(statsByVenue);
-    
-    if (statsToInsert.length > 0) {
-      const { error } = await supabase.from('daily_stats').insert(statsToInsert);
-      if (error) {
-        console.error('❌ Erreur mise à jour daily_stats:', error);
-      } else {
-        console.log(`✅ ${statsToInsert.length} stats journalières mises à jour`);
-      }
-    }
-  }
-}
-
-// Nouvelle fonction pour mettre à jour TOUTES les stats journalières
-async function updateAllDailyStats() {
-  console.log('📊 Recalcul complet des stats journalières...');
-  
-  // Effacer toutes les stats existantes
-  await supabase.from('daily_stats').delete().neq('date', '1900-01-01'); // Trick pour tout supprimer
-  
-  // Récupérer toutes les dates distinctes
-  const { data: dates } = await supabase
-    .from('sales')
-    .select('created_at')
-    .order('created_at', { ascending: true });
-  
-  if (!dates || dates.length === 0) return;
-  
-  // Extraire les dates uniques
-  const uniqueDates = [...new Set(dates.map(d => d.created_at.split('T')[0]))];
-  console.log(`📅 ${uniqueDates.length} jours à traiter`);
-  
-  let processedDates = 0;
-  
-  // Traiter par batch de dates
-  for (const date of uniqueDates) {
-    const { data: salesData } = await supabase
-      .from('sales')
-      .select('*')
-      .gte('created_at', date + 'T00:00:00')
-      .lt('created_at', date + 'T23:59:59');
-    
-    if (salesData && salesData.length > 0) {
-      // Même logique que updateDailyStats mais pour une date spécifique
-      const statsByVenue = salesData.reduce((acc, sale) => {
-        const key = `${sale.venue_id}_${sale.venue_name}`;
-        if (!acc[key]) {
-          acc[key] = {
-            date: date,
-            venue_id: sale.venue_id,
-            venue_name: sale.venue_name,
-            machine_id: sale.machine_id || 0,
-            machine_name: sale.machine_name,
-            total_orders: 0,
-            successful_orders: 0,
-            refunded_orders: 0,
-            total_revenue_ht: 0,
-            total_revenue_ttc: 0,
-            total_discount: 0,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          };
-        }
-        
-        if (sale.status !== 'refunded') {
-          acc[key].total_orders++;
-        }
-        if (sale.status === 'completed') {
-          acc[key].successful_orders++;
-          acc[key].total_revenue_ttc += parseFloat(sale.total_ttc) || 0;
-          acc[key].total_revenue_ht += parseFloat(sale.total_ht) || 0;
-          acc[key].total_discount += parseFloat(sale.discount_amount) || 0;
-        }
-        if (sale.status === 'refunded') {
-          acc[key].refunded_orders++;
-        }
-        
-        return acc;
-      }, {} as Record<string, any>);
-      
-      const statsToInsert = Object.values(statsByVenue);
-      
-      if (statsToInsert.length > 0) {
-        const { error } = await supabase.from('daily_stats').insert(statsToInsert);
-        if (!error) {
-          processedDates++;
-          if (processedDates % 10 === 0 || processedDates === uniqueDates.length) {
-            console.log(`✅ ${processedDates}/${uniqueDates.length} jours traités`);
-          }
-        }
-      }
-    }
-  }
-  
-  console.log(`✅ Recalcul des stats journalières terminé : ${processedDates}/${uniqueDates.length} jours`);
-}
-
-// Lancer la synchronisation
-console.log('🚀 Démarrage du script de synchronisation VendLive...');
-console.log(`📅 Date: ${new Date().toISOString()}`);
-console.log(`🔧 Configuration:`);
-console.log(`  - Mode: ${SYNC_MODE}`);
-console.log(`  - Date de début: ${SYNC_START_DATE}`);
-console.log(`  - Pages max: ${MAX_PAGES}`);
-console.log(`  - Taille de page: ${PAGE_SIZE}`);
+// Exécution du script
+console.log('🚀 Démarrage de la synchronisation...');
 
 syncVendlive()
   .then(() => {
-    console.log('\n✅ Script terminé avec succès');
+    console.log('✅ Script terminé avec succès');
     process.exit(0);
   })
-  .catch((err) => {
-    console.error('\n❌ Erreur fatale:', err);
-    console.error('Stack:', err.stack);
+  .catch((error) => {
+    console.error('❌ Erreur fatale:', error);
+    console.error('Stack:', error.stack);
     process.exit(1);
   });
+
+export { syncVendlive };
