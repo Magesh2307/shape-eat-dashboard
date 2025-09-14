@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import DashboardView from './components/DashboardView';
 import SalesView from './components/SalesView';
 import MachinesView from './components/MachinesView';
+import LoginForm from './components/LoginForm';
 
 // Configuration Supabase
 const supabase = createClient(
@@ -11,6 +12,19 @@ const supabase = createClient(
 );
 
 // Types simples pour éviter les erreurs d'import
+interface User {
+  id: string;
+  email: string;
+  user_metadata?: {
+    full_name?: string;
+  };
+}
+
+interface Session {
+  access_token: string;
+  refresh_token: string;
+  user: User;
+}
 interface Sale {
   id: string;
   total?: string;
@@ -58,8 +72,83 @@ interface ApiStats {
   fetchPeriodStats?: (period: string, customStart?: string, customEnd?: string) => Promise<any>;
 }
 
+
 const API_BASE = 'https://vendlive.com';
 const API_TOKEN = '2b99d02d6886f67b3a42d82c684108d2eda3d2e1';
+
+function App() {
+  // États d'authentification
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // États existants de votre app
+  const [activeView, setActiveView] = useState('dashboard');
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [machines, setMachines] = useState<Machine[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [apiStats, setApiStats] = useState<ApiStats>({
+    endpoint: '',
+    totalAPI: 0,
+    retrieved: 0,
+    todaySales: 0,
+    successfulSales: 0,
+    totalRevenue: 0
+  });
+  const [loadingProgress, setLoadingProgress] = useState('');
+
+  // Gestion de l'authentification
+  useEffect(() => {
+    // Récupérer la session actuelle
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    // Écouter les changements d'authentification
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setSession(session);
+        setLoading(false);
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Fonction de déconnexion
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+  };
+
+
+// 🔧 FONCTION DE NORMALISATION DES DONNÉES
+const normalizeOrderData = (order: any) => {
+  return {
+    ...order,
+    // ✅ FORCER LES TYPES NUMÉRIQUES - Vos prix sont des strings dans Supabase
+    price_ttc: parseFloat(order.price_ttc) || 0,
+    price_ht: parseFloat(order.price_ht) || 0,
+    quantity: parseInt(order.quantity) || 1,
+    discount_amount: parseFloat(order.discount_amount) || 0,
+    
+    // ✅ ASSURER LA COHÉRENCE DES CHAMPS
+    product_id: order.product_id ? parseInt(order.product_id) : null,
+    venue_id: order.venue_id ? parseInt(order.venue_id) : null,
+    machine_id: order.machine_id ? parseInt(order.machine_id) : null,
+    
+    // ✅ NETTOYER LES STRINGS
+    product_name: String(order.product_name || '').trim(),
+    product_category: String(order.product_category || '').trim(),
+    venue_name: String(order.venue_name || '').trim(),
+    
+    // ✅ GÉRER LES BOOLEANS (vos données sont déjà boolean)
+    is_refunded: Boolean(order.is_refunded),
+    
+    // ✅ DATES (garder comme string ISO)
+    created_at: order.created_at
+  };
+};
 
 function App() {
   const [activeView, setActiveView] = useState('dashboard');
@@ -134,7 +223,7 @@ const fetchPeriodStats = async (period: string, customStart?: string, customEnd?
       end: endDate
     });
     
-    // 📊 PAGINATION : Récupérer TOUTES les données
+    // 📊 PAGINATION : Récupérer TOUTES les données depuis orders
     let allData = [];
     let offset = 0;
     const limit = 1000;
@@ -148,7 +237,7 @@ const fetchPeriodStats = async (period: string, customStart?: string, customEnd?
       .lte('created_at', endDate)
       .eq('status', 'completed');
     
-    console.log(`📊 Total à charger pour la période: ${totalCount} ventes`);
+    console.log(`📊 Total à charger pour la période: ${totalCount} commandes`);
     
     // Charger par batch jusqu'à avoir tout
     while (hasMore && offset < (totalCount || 0)) {
@@ -167,10 +256,12 @@ const fetchPeriodStats = async (period: string, customStart?: string, customEnd?
       }
       
       if (data && data.length > 0) {
-        allData = [...allData, ...data];
+        // ✅ NORMALISER CHAQUE BATCH
+        const normalizedData = data.map(normalizeOrderData);
+        allData = [...allData, ...normalizedData];
         offset += data.length;
         
-        console.log(`📥 Batch chargé: ${allData.length}/${totalCount} ventes`);
+        console.log(`🔥 Batch chargé: ${allData.length}/${totalCount} commandes`);
         
         // Si on a moins que la limite, on a tout récupéré
         if (data.length < limit) {
@@ -181,29 +272,29 @@ const fetchPeriodStats = async (period: string, customStart?: string, customEnd?
       }
     }
     
-    console.log(`✅ Total chargé: ${allData.length} ventes pour la période`);
+    console.log(`✅ Total chargé: ${allData.length} commandes pour la période`);
     
-    // Calculer les statistiques avec TOUTES les données
+    // Calculer les statistiques avec TOUTES les données normalisées
     if (allData.length > 0) {
-      const totalRevenue = allData.reduce((sum, v) => sum + parseFloat(v.total_ttc || 0), 0);
+     const totalRevenue = allData.reduce((sum, v) => sum + parseFloat(v.total_ttc || '0'), 0);
       const activeVenues = [...new Set(allData.map(v => v.venue_id))].length;
       
       // Grouper par venue
       const venueMap = new Map();
-      allData.forEach(sale => {
-        const venueId = sale.venue_id || 'unknown';
-        if (!venueMap.has(venueId)) {
-          venueMap.set(venueId, {
-            venue_id: sale.venue_id,
-            venue_name: sale.venue_name,
-            total_revenue_ttc: 0,
-            successful_orders: 0
-          });
-        }
-        const venue = venueMap.get(venueId);
-        venue.total_revenue_ttc += parseFloat(sale.total_ttc || 0);
-        venue.successful_orders++;
-      });
+allData.forEach(order => {
+  const venueId = order.venue_id || 'unknown';
+  if (!venueMap.has(venueId)) {
+    venueMap.set(venueId, {
+      venue_id: order.venue_id,
+      venue_name: order.venue_name,
+      total_revenue_ttc: 0,
+      successful_orders: 0
+    });
+  }
+  const venue = venueMap.get(venueId);
+  venue.total_revenue_ttc += parseFloat(order.total_ttc || '0');
+  venue.successful_orders++;
+});
       
       const result = {
         total_revenue_ttc: totalRevenue,
@@ -233,7 +324,6 @@ const fetchPeriodStats = async (period: string, customStart?: string, customEnd?
     return null;
   }
 };
-
 
   // Fonction de validation centralisée pour le CA réel
   const isValidSaleForRevenue = (sale: Sale): boolean => {
@@ -279,174 +369,73 @@ const fetchPeriodStats = async (period: string, customStart?: string, customEnd?
     }
   };
 
-  // Fonction pour transformer les données Supabase au format VendLive
-  const transformOrdersToSales = (orders: any[]): Sale[] => {
-    const salesMap = new Map();
-    let skippedCount = 0;
-    
-    orders.forEach((order, index) => {
-      // Validation des champs critiques
-      if (!order.vendlive_id || order.price_ttc === null || order.price_ttc === undefined) {
-        console.warn(`⚠️ Ligne ${index} ignorée (données manquantes):`, {
-          vendlive_id: order.vendlive_id,
-          price_ttc: order.price_ttc,
-          product_name: order.product_name
-        });
-        skippedCount++;
-        return;
-      }
-      
-      const saleId = order.vendlive_id.split('_')[0];
-      
-      if (!salesMap.has(saleId)) {
-        salesMap.set(saleId, {
-          id: saleId,
-          createdAt: order.created_at ? 
-            (order.created_at.endsWith('Z') ? order.created_at : order.created_at + 'Z') : 
-            new Date().toISOString(),
-          total: (order.price_ttc || 0).toString(),
-          totalCharged: (order.price_ttc || 0).toString(), 
-          charged: order.status === 'completed' ? 'Yes' : 'No',
-          machine: {
-            id: order.machine_id || 0,
-            friendlyName: order.machine_name || 'Machine inconnue'
-          },
-          location: {
-            venue: {
-              id: order.venue_id || 0,
-              name: order.venue_name || 'Venue inconnue'
-            }
-          },
-          productSales: [],
-          discountAmount: (order.discount_amount || 0).toString(),
-          promoCode: order.promo_code,
-          customerEmail: order.client_email,
-          paymentStatusDisplay: order.status === 'refunded' ? 'DECLINED' : 'SUCCESS'
-        });
-      }
-      
-      const sale = salesMap.get(saleId);
-      sale.productSales.push({
-        productName: order.product_name || 'Produit inconnu',
-        category: order.product_category || 'Non catégorisé',
-        quantity: order.quantity || 1,
-        price: order.price_ttc || 0,
-        vendStatus: order.status === 'completed' ? 'Success' : 'Failed',
-        totalPaid: (order.price_ttc || 0).toString(),
-        isRefunded: order.status === 'refunded'
-      });
-      
-      // Mettre à jour le total de la vente
-      const currentTotal = parseFloat(sale.total || '0');
-      sale.total = (currentTotal + (order.price_ttc || 0)).toString();
-      sale.totalCharged = sale.total;
-    });
-    
-    if (skippedCount > 0) {
-      console.warn(`⚠️ ${skippedCount} lignes ignorées sur ${orders.length} (données manquantes)`);
-    }
-    
-    const sales = Array.from(salesMap.values());
-    console.log(`✅ ${sales.length} ventes transformées avec succès`);
-    
-    return sales;
-  };
-
-  // NOUVELLE fonction pour charger depuis Supabase - CHARGEMENT COMPLET
-  const loadDataFromSupabase = async () => {
+  // 🔧 CORRECTION loadDataFromSupabase - AVEC NORMALISATION
+const loadDataFromSupabase = async () => {
+  setIsLoading(true);
   try {
-    setIsLoading(true);
-    setError(null);
-    setLoadingProgress('Connexion à Supabase...');
-    
-    console.log('🔍 Chargement depuis la table sales...');
-    
-    // 1. Charger le dashboard summary
-    const { data: summary, error: summaryError } = await supabase
-      .from('dashboard_summary')
-      .select('*')
-      .single();
-    
-    if (summary && !summaryError) {
-      console.log('📊 Dashboard Summary trouvé:', summary);
-      setApiStats(prev => ({
-        ...prev,
-        dashboardSummary: summary
-      }));
-    }
-    
-    // 2. Compter le total dans sales
-    setLoadingProgress('Comptage des ventes...');
-    const { count: totalCount, error: countError } = await supabase
-      .from('sales')
-      .select('*', { count: 'exact', head: true });
-    
-    if (countError) {
-      console.error('❌ Erreur comptage:', countError);
-      throw countError;
-    }
-    
-    console.log(`📊 TOTAL dans sales : ${totalCount} ventes`);
-    
-    if (!totalCount || totalCount === 0) {
-      setError('Aucune donnée trouvée dans la table sales. Lancez la synchronisation.');
-      setIsLoading(false);
-      return;
-    }
-    
-    // 3. Charger toutes les ventes par batch
     let allSales: any[] = [];
     const batchSize = 1000;
+    let hasMore = true;
     let offset = 0;
-    
-    while (offset < totalCount) {
-      const progress = Math.round((offset / totalCount) * 100);
-      setLoadingProgress(`Chargement des ventes... ${offset}/${totalCount} (${progress}%)`);
-      
+
+    while (hasMore) {
       const { data: batch, error } = await supabase
         .from('sales')
         .select('*')
         .order('created_at', { ascending: false })
         .range(offset, offset + batchSize - 1);
-      
-      if (error) {
-        console.error(`❌ Erreur batch ${offset}-${offset + batchSize}:`, error);
-        throw error;
-      }
+
+      if (error) throw error;
       
       if (batch && batch.length > 0) {
-        allSales = [...allSales, ...batch];
-        console.log(`✅ Batch récupéré : ${batch.length} ventes`);
-        console.log('🔍 Exemple de vente avec products:', batch[0]);
+		const normalizedBatch = batch.map(sale => ({
+		  ...sale,
+		  total_ttc: parseFloat(sale.total_ttc || '0'),
+		  total_ht: parseFloat(sale.total_ht || '0'),
+		  discount_amount: parseFloat(sale.discount_amount || '0'),
+		  is_refunded: Boolean(sale.is_refunded),
+		  
+		  // Parser les champs JSON correctement
+		  products: Array.isArray(sale.products) 
+			? sale.products 
+			: [],
+		  
+		  categories: typeof sale.categories === 'string' 
+			? JSON.parse(sale.categories || '[]')
+			: (Array.isArray(sale.categories) ? sale.categories : [])
+		}));
+        
+        allSales = [...allSales, ...normalizedBatch];
+        offset += batchSize;
+        
+        if (batch.length < batchSize) {
+          hasMore = false;
+        }
+      } else {
+        hasMore = false;
       }
-      
-      offset += batchSize;
-      await new Promise(resolve => setTimeout(resolve, 50));
     }
+
+    setSales(allSales); // Passer les vraies sales aux vues
     
-    console.log(`🎉 TOTAL CHARGÉ : ${allSales.length} ventes`);
-    
-    // 4. Pas besoin de transformer ! Les données sont déjà au bon format
-    setSales(allSales);
-    
-    // 5. Calculer les stats
-    const totalRevenue = allSales.reduce((sum, sale) => sum + (sale.total_ttc || 0), 0);
-    
+    // Calcul des stats
+    const totalRevenue = allSales
+      .filter(sale => sale.status === 'completed' && !sale.is_refunded)
+      .reduce((sum, sale) => sum + parseFloat(sale.total_ttc || '0'), 0);
+
     setApiStats(prev => ({
       ...prev,
       endpoint: 'Supabase Sales',
-      totalAPI: totalCount,
+      totalAPI: allSales.length,
       retrieved: allSales.length,
       totalRevenue: totalRevenue,
       fetchPeriodStats
     }));
     
-    setLoadingProgress(`✅ ${allSales.length} ventes chargées !`);
-    setIsLoading(false);
-    
-  } catch (err) {
-    console.error('❌ Erreur Supabase:', err);
-    setError(err instanceof Error ? err.message : 'Erreur de connexion à la base de données');
+  } catch (error) {
+    console.error('Erreur lors du chargement:', error);
+    setError('Erreur lors du chargement des données');
+  } finally {
     setIsLoading(false);
   }
 };
@@ -469,23 +458,39 @@ const fetchPeriodStats = async (period: string, customStart?: string, customEnd?
       console.log(`- Table 'orders' : ${ordersCount} lignes`);
       console.log(`- Table 'sales' : ${salesCount} lignes`);
       
-      // Regarder les dates des données
+      // Regarder les dates des données dans orders
       const { data: oldestOrder } = await supabase
-        .from('orders')
+        .from('sales')
         .select('created_at')
         .order('created_at', { ascending: true })
         .limit(1);
       
       const { data: newestOrder } = await supabase
-        .from('orders')
+        .from('sales')
         .select('created_at')
         .order('created_at', { ascending: false })
         .limit(1);
       
       if (oldestOrder?.[0] && newestOrder?.[0]) {
-        console.log(`📅 Période des données :`);
+        console.log(`📅 Période des données dans orders :`);
         console.log(`- Plus ancienne : ${oldestOrder[0].created_at}`);
         console.log(`- Plus récente : ${newestOrder[0].created_at}`);
+      }
+      
+      // BONUS: Regarder un exemple d'order avec ses prix
+      const { data: sampleOrder } = await supabase
+        .from('sales')
+        .select('*')
+        .limit(1);
+      
+      if (sampleOrder?.[0]) {
+        console.log('📦 Exemple d\'order:', {
+          id: sampleOrder[0].id,
+          price_ttc: sampleOrder[0].price_ttc,
+          product_name: sampleOrder[0].product_name,
+          quantity: sampleOrder[0].quantity,
+          revenue: sampleOrder[0].price_ttc * sampleOrder[0].quantity
+        });
       }
       
       return { ordersCount, salesCount };
@@ -555,76 +560,109 @@ const fetchPeriodStats = async (period: string, customStart?: string, customEnd?
     }
   };
 
-  // Version complète avec pagination automatique
-	const handleLoadAll = async () => {
-	  console.log('🔄 Rechargement complet depuis sales');
-	  setSales([]);
-	  setError(null);
+  // 🔧 CORRECTION handleLoadAll (même logique)
+  const handleLoadAll = async () => {
+    console.log('🔄 Rechargement complet avec normalisation');
+    setSales([]);
+    setError(null);
+    
+    try {
+      setIsLoading(true);
+      
+      await fetchDashboardSummary();
+      
+      const { count: totalCount } = await supabase
+        .from('sales')
+        .select('*', { count: 'exact', head: true });
+      
+      console.log(`📊 Total à charger : ${totalCount} orders`);
+      
+      if (!totalCount || totalCount === 0) {
+        setError('Aucune commande dans la base');
+        setIsLoading(false);
+        return;
+      }
+      
+      let allSales: any[] = [];
+      const batchSize = 1000;
+      let offset = 0;
+      
+      while (offset < totalCount) {
+        const progress = Math.round((offset / totalCount) * 100);
+        setLoadingProgress(`Chargement... ${offset}/${totalCount} (${progress}%)`);
+        
+        const { data: batch, error } = await supabase
+          .from('sales')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(offset, offset + batchSize - 1);
+        
+        if (error) throw error;
+        
+        if (batch && batch.length > 0) {
+          // ✅ NORMALISER CHAQUE BATCH
+          const normalizedBatch = batch.map(normalizeOrderData);
+          allSales = [...allSales, ...normalizedBatch];
+        }
+        
+        offset += batchSize;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      console.log(`✅ ${allSales.length} orders normalisées`);
+      setSales(allSales); // ✅ DONNÉES NORMALISÉES
 	  
-	  try {
-		setIsLoading(true);
-		
-		// Récupérer le résumé
-		await fetchDashboardSummary();
-		
-		// Compter dans sales
-		const { count: totalCount } = await supabase
-		  .from('sales')
-		  .select('*', { count: 'exact', head: true });
-		
-		console.log(`📊 Total à charger : ${totalCount} ventes`);
-		
-		if (!totalCount || totalCount === 0) {
-		  setError('Aucune vente dans la base');
-		  setIsLoading(false);
-		  return;
-		}
-		
-		let allSales: any[] = [];
-		const batchSize = 1000;
-		let offset = 0;
-		
-		while (offset < totalCount) {
-		  const progress = Math.round((offset / totalCount) * 100);
-		  setLoadingProgress(`Chargement... ${offset}/${totalCount} (${progress}%)`);
-		  
-		  const { data: batch, error } = await supabase
-			.from('sales')
-			.select('*')
-			.order('created_at', { ascending: false })
-			.range(offset, offset + batchSize - 1);
-		  
-		  if (error) throw error;
-		  
-		  allSales = [...allSales, ...(batch || [])];
-		  offset += batchSize;
-		  
-		  await new Promise(resolve => setTimeout(resolve, 100));
-		}
-		
-		console.log(`✅ ${allSales.length} ventes chargées`);
-		setSales(allSales);
-		
-		const totalRevenue = allSales.reduce((sum, sale) => sum + (sale.total_ttc || 0), 0);
-		
-		setApiStats(prev => ({
-		  ...prev,
-		  endpoint: 'Supabase Sales',
-		  totalAPI: allSales.length,
-		  retrieved: allSales.length,
-		  totalRevenue: totalRevenue,
-		  fetchPeriodStats
-		}));
-		
-		setLoadingProgress(`✅ ${allSales.length} ventes chargées !`);
-		setIsLoading(false);
-		
-	  } catch (err) {
-		console.error('❌ Erreur handleLoadAll:', err);
-		setError(err instanceof Error ? err.message : 'Erreur lors du rechargement');
-		setIsLoading(false);
-	  }
-	};
+	  // Debug logs - à ajouter temporairement
+console.log('=== DEBUG TOTAL REVENUE ===');
+console.log('Total allSales:', allSales.length);
+console.log('Premier order:', allSales[0]);
+console.log('Structure premier order:', Object.keys(allSales[0] || {}));
+
+const validOrders = allSales.filter(order => order.status === 'completed' && !order.is_refunded);
+console.log('Orders après filtrage:', validOrders.length);
+console.log('Premier order valide:', validOrders[0]);
+
+const revenues = validOrders.map(sale => {
+  const ttc = parseFloat(sale.total_ttc || '0');
+  console.log(`Sale ${sale.id}: total_ttc="${sale.total_ttc}" -> parsed=${ttc}`);
+  return ttc;
+});
+
+console.log('Tous les montants:', revenues);
+console.log('Somme:', revenues.reduce((sum, val) => sum + val, 0));
+console.log('=== FIN DEBUG ===');
+      
+const totalRevenue = allSales
+  .filter(sale => sale.status === 'completed' && !sale.is_refunded)
+  .reduce((sum, sale) => sum + parseFloat(sale.total_ttc || '0'), 0);
+
+const successfulSales = allSales.filter(sale => sale.status === 'completed' && !sale.is_refunded).length;
+
+setApiStats(prev => ({
+  ...prev,
+  endpoint: 'Supabase Sales',
+  totalAPI: allSales.length,
+  retrieved: allSales.length,
+  totalRevenue: totalRevenue,
+  successfulSales: successfulSales,
+  fetchPeriodStats
+}));
+
+console.log('Stats calculées au chargement initial:', {
+  totalRevenue,
+  successfulSales,
+  totalOrders: allSales.length
+});
+      
+      setLoadingProgress(`✅ ${allSales.length} commandes chargées !`);
+      setIsLoading(false);
+      
+    } catch (err) {
+      console.error('❌ Erreur handleLoadAll:', err);
+      setError(err instanceof Error ? err.message : 'Erreur lors du rechargement');
+      setIsLoading(false);
+    }
+  };
 
   // useEffect principal - Chargement initial avec Supabase
   useEffect(() => {

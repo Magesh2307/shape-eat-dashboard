@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import CustomDateRangePicker from './CustomDateRangePicker';
+import { generateInvoicePDF, generateInvoiceNumber } from "./utils/invoice";
+
 
 const parseJsonField = (field: any): any[] => {
   if (Array.isArray(field)) return field;
@@ -52,6 +54,13 @@ interface Sale {
 interface SalesViewProps {
   sales: Sale[];
 }
+
+const toYMD = (d: Date | null) =>
+  d
+    ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+        d.getDate()
+      ).padStart(2, "0")}`
+    : "";
 
 // Composant Portal pour les dropdowns
 const DropdownPortal: React.FC<{
@@ -121,6 +130,8 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
   // États communs aux deux onglets
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [showTTC, setShowTTC] = useState(true);
+  const [generatingInvoiceId, setGeneratingInvoiceId] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedPeriod, setSelectedPeriod] = useState('all');
@@ -145,6 +156,233 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
   const categoryButtonRef = useRef<HTMLButtonElement>(null);
 
   const itemsPerPage = 50;
+  
+const handleGenerateInvoice = async (sale: any) => {
+  try {
+    setGeneratingInvoiceId(sale.id || sale.vendlive_id);
+    
+    // Parser les produits depuis le JSON
+    const productsArray = parseJsonField(sale.products);
+    
+    console.log('=== RECHERCHE DES VRAIS PRIX ===');
+    console.log('Sale complète:', sale);
+    console.log('Produits array:', productsArray);
+    
+    const orderLines = [];
+    let hasValidPrices = true;
+    let errorMessages = [];
+    
+    for (let i = 0; i < productsArray.length; i++) {
+      const product = productsArray[i];
+      console.log(`\n=== PRODUIT ${i + 1}: ${product.name} ===`);
+      console.log('Structure complète du produit:', product);
+      
+      // Chercher les VRAIS prix appliqués lors de la transaction
+      let realPriceTTC = null;
+      let realPriceHT = null;
+      let realVATRate = null;
+      
+      // 1. PRIX DIRECTS DANS LE PRODUIT (transaction réelle)
+      realPriceTTC = 
+        product.actual_price ||
+        product.transaction_price ||
+        product.sale_price ||
+        product.charged_price ||
+        product.final_price ||
+        product.unit_price_ttc ||
+        product.price_ttc ||
+        product.selling_price;
+      
+      realPriceHT = 
+        product.actual_price_ht ||
+        product.transaction_price_ht ||
+        product.sale_price_ht ||
+        product.unit_price_ht ||
+        product.price_ht ||
+        product.base_price;
+      
+      realVATRate = 
+        product.vat_rate ||
+        product.tax_rate ||
+        product.applied_vat_rate;
+      
+      // 2. CHERCHER DANS productSales de la vente (données de transaction)
+      if (!realPriceTTC || !realPriceHT) {
+        const productSales = sale.productSales || sale.order_lines || sale.lines || [];
+        const matchingProductSale = productSales.find(ps => 
+          ps.product_id === product.id ||
+          ps.product?.id === product.id ||
+          ps.product_name === product.name ||
+          ps.productName === product.name
+        );
+        
+        if (matchingProductSale) {
+          console.log('Données trouvées dans productSales:', matchingProductSale);
+          
+          realPriceTTC = realPriceTTC || 
+            matchingProductSale.unit_price_ttc ||
+            matchingProductSale.price_ttc ||
+            matchingProductSale.selling_price ||
+            matchingProductSale.final_price;
+          
+          realPriceHT = realPriceHT || 
+            matchingProductSale.unit_price_ht ||
+            matchingProductSale.price_ht ||
+            matchingProductSale.base_price;
+          
+          realVATRate = realVATRate || 
+            matchingProductSale.vat_rate ||
+            matchingProductSale.tax_rate;
+        }
+      }
+      
+      // 3. CHERCHER DANS LES PRIX VENUE (au moment de la vente)
+      if (!realPriceTTC || !realPriceHT) {
+        const venueId = sale.venue_id || sale.location?.venue?.id;
+        
+        // Pricing par venue
+        if (product.venue_pricing && venueId && product.venue_pricing[venueId]) {
+          const venuePricing = product.venue_pricing[venueId];
+          console.log(`Pricing venue ${venueId} trouvé:`, venuePricing);
+          
+          realPriceTTC = realPriceTTC || venuePricing.price_ttc || venuePricing.price;
+          realPriceHT = realPriceHT || venuePricing.price_ht || venuePricing.base_price;
+          realVATRate = realVATRate || venuePricing.vat_rate || venuePricing.tax_rate;
+        }
+        
+        // Array venues
+        if (product.venues && Array.isArray(product.venues) && venueId) {
+          const venueData = product.venues.find(v => v.venue_id === venueId || v.id === venueId);
+          if (venueData) {
+            console.log('Venue data trouvée:', venueData);
+            realPriceTTC = realPriceTTC || venueData.price_ttc || venueData.price;
+            realPriceHT = realPriceHT || venueData.price_ht;
+            realVATRate = realVATRate || venueData.vat_rate;
+          }
+        }
+      }
+      
+      // VALIDATION : on doit avoir AU MINIMUM les prix TTC ET HT
+      console.log(`Prix trouvés pour ${product.name}:`, {
+        priceTTC: realPriceTTC,
+        priceHT: realPriceHT,
+        vatRate: realVATRate
+      });
+      
+      // Si on a TTC mais pas HT, et qu'on a la TVA, on peut calculer
+      if (realPriceTTC && !realPriceHT && realVATRate) {
+        realPriceHT = realPriceTTC / (1 + realVATRate);
+        console.log(`Prix HT calculé avec TVA ${realVATRate}: ${realPriceHT}`);
+      }
+      
+      // Si on a HT mais pas TTC, et qu'on a la TVA, on peut calculer
+      if (!realPriceTTC && realPriceHT && realVATRate) {
+        realPriceTTC = realPriceHT * (1 + realVATRate);
+        console.log(`Prix TTC calculé avec TVA ${realVATRate}: ${realPriceTTC}`);
+      }
+      
+      // ÉCHEC : pas assez de données pour une facture légale
+      if (!realPriceTTC || !realPriceHT) {
+        hasValidPrices = false;
+        const error = `Produit "${product.name}": Prix réels introuvables (TTC: ${realPriceTTC}, HT: ${realPriceHT})`;
+        errorMessages.push(error);
+        console.error(error);
+        continue;
+      }
+      
+      // Calculer la TVA si pas fournie
+      if (!realVATRate && realPriceTTC && realPriceHT) {
+        realVATRate = (realPriceTTC - realPriceHT) / realPriceHT;
+      }
+      
+      const quantity = product.quantity || 1;
+      
+      orderLines.push({
+        product_name: product.name || 'Produit',
+        product_category: product.category || '',
+        quantity: quantity,
+        price_ttc: parseFloat(realPriceTTC),
+        price_ht: parseFloat(realPriceHT),
+        vat_rate: realVATRate || 0,
+        vat_amount: (realPriceTTC - realPriceHT) * quantity
+      });
+      
+      console.log(`✅ Produit ${product.name} validé:`, {
+        quantity: quantity,
+        priceTTC: realPriceTTC.toFixed(2),
+        priceHT: realPriceHT.toFixed(2),
+        vatRate: realVATRate ? `${(realVATRate * 100).toFixed(2)}%` : '0%'
+      });
+    }
+    
+    // VÉRIFICATION FINALE
+    if (!hasValidPrices) {
+      const errorMsg = `Impossible de générer la facture :\n\n${errorMessages.join('\n')}\n\nLes prix réels doivent être disponibles dans les données de transaction.`;
+      console.error('ÉCHEC GÉNÉRATION FACTURE:', errorMsg);
+      alert(errorMsg);
+      return;
+    }
+    
+    // Validation des totaux avec les vrais prix
+    const calculatedTotalTTC = orderLines.reduce((sum, line) => sum + (line.price_ttc * line.quantity), 0);
+    const calculatedTotalHT = orderLines.reduce((sum, line) => sum + (line.price_ht * line.quantity), 0);
+    
+    console.log('=== VALIDATION TOTAUX AVEC VRAIS PRIX ===');
+    console.log({
+      'Total TTC vente': sale.total_ttc,
+      'Total TTC calculé (vrais prix)': calculatedTotalTTC.toFixed(2),
+      'Écart TTC': Math.abs(calculatedTotalTTC - (sale.total_ttc || 0)).toFixed(2),
+      'Total HT vente': sale.total_ht,
+      'Total HT calculé (vrais prix)': calculatedTotalHT.toFixed(2),
+      'Écart HT': Math.abs(calculatedTotalHT - (sale.total_ht || 0)).toFixed(2)
+    });
+    
+    // Alerte si écart important (peut indiquer un problème de données)
+    const ttcGap = Math.abs(calculatedTotalTTC - (sale.total_ttc || 0));
+    if (ttcGap > 0.10) {
+      const warningMsg = `⚠️ ATTENTION: Écart de ${ttcGap.toFixed(2)}€ entre le total vente (${sale.total_ttc}€) et le total calculé (${calculatedTotalTTC.toFixed(2)}€).\n\nVoulez-vous continuer ?`;
+      if (!confirm(warningMsg)) {
+        return;
+      }
+    }
+    
+    // Construire les données de facture avec les vrais prix
+    const invoiceData = {
+      transaction_id: sale.transaction_id || sale.id || sale.vendlive_id,
+      created_at: sale.created_at,
+      venue_name: sale.venue_name,
+      order_lines: orderLines,
+      payment_method: sale.payment_method || 'CB',
+      customer_email: sale.customer_email,
+      promo_code: sale.promo_code,
+      discount_amount: sale.discount_amount || 0,
+      total_ht: calculatedTotalHT,
+      total_ttc: calculatedTotalTTC,
+      total_tva: calculatedTotalTTC - calculatedTotalHT
+    };
+    
+    console.log('✅ Génération facture avec vrais prix:', invoiceData);
+    
+    // Générer le PDF
+    const { blob, filename } = await generateInvoicePDF(invoiceData);
+    
+    // Télécharger le fichier
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+  } catch (error) {
+    console.error('Erreur génération facture:', error);
+    alert('Erreur lors de la génération de la facture');
+  } finally {
+    setGeneratingInvoiceId(null);
+  }
+};
 
   // Vérification des données
   if (!sales || !Array.isArray(sales)) {
@@ -184,17 +422,26 @@ const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
 
   // Extraire toutes les venues uniques
   const allVenues = useMemo(() => {
-    const venuesMap = new Map();
-    sales.forEach(sale => {
-      if (sale.location?.venue?.id && sale.location?.venue?.name) {
-        venuesMap.set(sale.location.venue.id, {
-          id: sale.location.venue.id,
-          name: sale.location.venue.name
-        });
-      }
-    });
-    return Array.from(venuesMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [sales]);
+  const venuesMap = new Map();
+
+  sales.forEach(sale => {
+    if (sale.venue_name) {
+      // Source directe normalisée
+      venuesMap.set(sale.venue_name, { id: sale.venue_name, name: sale.venue_name });
+    } else if (sale.location?.venue?.id && sale.location?.venue?.name) {
+      // Fallback JSON location
+      venuesMap.set(sale.location.venue.id, {
+        id: sale.location.venue.id,
+        name: sale.location.venue.name
+      });
+    } else if (sale.locationName) {
+      // Autre fallback
+      venuesMap.set(sale.locationName, { id: sale.locationName, name: sale.locationName });
+    }
+  });
+
+  return Array.from(venuesMap.values());
+}, [sales]);
 
   // Extraire toutes les catégories uniques
   const allCategories = useMemo(() => {
@@ -254,25 +501,25 @@ const getDateFilteredSales = useCallback(() => {
         });
         break;
       case '7days':
-        const sevenDaysAgo = new Date(today);
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        filtered = filtered.filter(sale => {
-          const dateField = sale.created_at || sale.createdAt;
-          if (!dateField) return false;
-          const saleDate = new Date(dateField);
-          return saleDate >= sevenDaysAgo;
-        });
-        break;
+		  const sevenDaysAgo = new Date(today);
+		  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // Changé de -7 à -6
+		  filtered = filtered.filter(sale => {
+			const dateField = sale.created_at || sale.createdAt;
+			if (!dateField) return false;
+			const saleDate = new Date(dateField);
+			return saleDate >= sevenDaysAgo;
+		  });
+		  break;
       case '30days':
-        const thirtyDaysAgo = new Date(today);
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        filtered = filtered.filter(sale => {
-          const dateField = sale.created_at || sale.createdAt;
-          if (!dateField) return false;
-          const saleDate = new Date(dateField);
-          return saleDate >= thirtyDaysAgo;
-        });
-        break;
+		  const thirtyDaysAgo = new Date(today);
+		  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29); // Changé de -30 à -29
+		  filtered = filtered.filter(sale => {
+			const dateField = sale.created_at || sale.createdAt;
+			if (!dateField) return false;
+			const saleDate = new Date(dateField);
+			return saleDate >= thirtyDaysAgo;
+		  });
+		  break;
       case 'custom':
         if (customDateRange.start && customDateRange.end) {
           const startDate = new Date(customDateRange.start);
@@ -469,58 +716,67 @@ const filteredAndSortedSales = useMemo(() => {
     // Agrégation des produits
     const productMap = new Map();
     
-    filtered.forEach(sale => {
-      const products = sale.productSales || sale.products || [];
-      const venueId = sale.location?.venue?.id;
-      const venueName = sale.location?.venue?.name || 'Venue inconnue';
+filtered.forEach(sale => {
+  const products = sale.productSales || sale.products || [];
+  const venueId = sale.location?.venue?.id || sale.venue_name || sale.locationName;
+  const venueName = sale.venue_name || sale.location?.venue?.name || sale.locationName || 'Venue inconnue';
+  
+  products.forEach((product: any) => {
+    const productName = product.productName || product.name || product.product?.name || 'Produit inconnu';
+    
+    if (productName === 'Produit inconnu') return;
+    
+    // Extraire le nom de la catégorie
+    let categoryName = '';
+    if (typeof product.category === 'string') {
+      categoryName = product.category;
+    } else if (product.category?.name) {
+      categoryName = product.category.name;
+    } else if (product.productCategory) {
+      categoryName = typeof product.productCategory === 'string' 
+        ? product.productCategory 
+        : product.productCategory.name || '';
+    }
+    categoryName = categoryName || 'Non catégorisé';
+    
+    const quantity = Number(product.quantity ?? 1);
+    const priceRaw = product.price_ttc ?? product.priceTTC ?? product.unit_price_ttc ??
+      product.price_ht ?? product.priceHT ?? product.unit_price_ht ??
+      product.selling_price ?? product.price ?? product.unitPrice ?? 0;
+
+    const price = typeof priceRaw === 'string'
+      ? parseFloat(String(priceRaw).replace(',', '.'))
+      : Number(priceRaw) || 0;
+
+    const total = quantity * price;
+    
+    const key = `${productName}_${categoryName}`;
+    
+    if (productMap.has(key)) {
+      const existing = productMap.get(key);
+      existing.quantity += quantity;
+      existing.revenue += total;
+      existing.salesCount += 1;
       
-      products.forEach((product: any) => {
-        const productName = product.productName || product.name || product.product?.name || 'Produit inconnu';
-        
-        if (productName === 'Produit inconnu') return;
-        
-        // Extraire le nom de la catégorie
-        let categoryName = '';
-        if (typeof product.category === 'string') {
-          categoryName = product.category;
-        } else if (product.category?.name) {
-          categoryName = product.category.name;
-        } else if (product.productCategory) {
-          categoryName = typeof product.productCategory === 'string' 
-            ? product.productCategory 
-            : product.productCategory.name || '';
-        }
-        categoryName = categoryName || 'Non catégorisé';
-        
-        const quantity = parseInt(product.quantity || '1');
-        const price = parseFloat(product.price || product.unitPrice || '0');
-        const total = quantity * price;
-        
-        const key = `${productName}_${categoryName}`;
-        
-        if (productMap.has(key)) {
-          const existing = productMap.get(key);
-          existing.quantity += quantity;
-          existing.revenue += total;
-          existing.salesCount += 1;
-          if (venueId && !existing.venues.has(venueId)) {
-            existing.venues.set(venueId, venueName);
-          }
-        } else {
-          const venues = new Map();
-          if (venueId) venues.set(venueId, venueName);
-          
-          productMap.set(key, {
-            name: productName,
-            category: categoryName,
-            quantity: quantity,
-            revenue: total,
-            salesCount: 1,
-            venues: venues
-          });
-        }
+      // Ajouter la venue si elle n'existe pas déjà
+      if (venueId && !existing.venues.has(venueId)) {
+        existing.venues.set(venueId, venueName);
+      }
+    } else {
+      const venues = new Map();
+      if (venueId) venues.set(venueId, venueName);
+      
+      productMap.set(key, {
+        name: productName,
+        category: categoryName,
+        quantity: quantity,
+        revenue: total,
+        salesCount: 1,
+        venues: venues
       });
-    });
+    }
+  });
+});
     
     // Convertir en array et calculer les moyennes
     let products = Array.from(productMap.values()).map(product => ({
@@ -601,19 +857,37 @@ const filteredAndSortedSales = useMemo(() => {
   };
 
   // Stats pour l'onglet transactions
-  const stats = useMemo(() => {
-    const validSales = filteredAndSortedSales.filter(sale => sale.charged === 'Yes');
-    const totalRevenue = validSales.reduce((sum, sale) => {
-      const amount = parseFloat(sale.total || sale.totalCharged || '0');
-      return sum + (isNaN(amount) ? 0 : amount);
-    }, 0);
+	const stats = useMemo(() => {
+  // Filtrer les ventes réussies basé sur status ou payment_status
+  const validSales = filteredAndSortedSales.filter(sale => 
+    sale.status === 'completed' || 
+    sale.payment_status === 'completed' ||
+    sale.payment_status === 'paid' ||
+    sale.status === 'success'
+  );
+  
+  // Calculer le CA total TTC et HT
+  const totalRevenue = validSales.reduce((sum, sale) => {
+    const amount = sale.total_ttc || parseFloat(sale.total || sale.totalCharged || '0');
+    return sum + (isNaN(amount) ? 0 : amount);
+  }, 0);
+  
+  const totalRevenueHT = validSales.reduce((sum, sale) => {
+    const amount = sale.total_ht || 0;
+    return sum + amount;
+  }, 0);
+  
+  // Calculer la TVA (différence entre TTC et HT)
+  const totalTVA = totalRevenue - totalRevenueHT;
 
-    return {
-      totalSales: filteredAndSortedSales.length,
-      successfulSales: validSales.length,
-      totalRevenue
-    };
-  }, [filteredAndSortedSales]);
+  return {
+    totalSales: filteredAndSortedSales.length,
+    successfulSales: validSales.length,
+    totalRevenue,
+    totalRevenueHT,
+    totalTVA
+  };
+}, [filteredAndSortedSales]);
 
   // Format date helper
 	const formatDate = (dateString: string) => {
@@ -1030,114 +1304,147 @@ const getFormattedPeriod = () => {
         </div>
       </div>
 
-      {/* Contenu selon l'onglet actif */}
-      {activeTab === 'transactions' ? (
-        <>
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-6">
-            <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center">
-                  <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
-                </div>
-              </div>
-              <p className="text-3xl font-light text-white mb-1">{stats.totalSales}</p>
-              <p className="text-sm text-slate-400">Transactions totales</p>
-            </div>
+{/* Contenu selon l'onglet actif */}
+{activeTab === 'transactions' ? (
+  <>
+    {/* Stats */}
+    <div className="grid grid-cols-3 gap-6">
+      <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
+        <div className="flex items-center justify-between mb-4">
+          <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center">
+            <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+          </div>
+        </div>
+        <p className="text-3xl font-light text-white mb-1">{stats.totalSales}</p>
+        <p className="text-sm text-slate-400">Transactions totales</p>
+      </div>
 
-            <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 bg-emerald-500/20 rounded-xl flex items-center justify-center">
-                  <svg className="w-6 h-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-              </div>
-              <p className="text-3xl font-light text-white mb-1">{stats.successfulSales}</p>
-              <p className="text-sm text-slate-400">Ventes réussies</p>
-            </div>
+      <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
+        <div className="flex items-center justify-between mb-4">
+          <div className="w-12 h-12 bg-emerald-500/20 rounded-xl flex items-center justify-center">
+            <svg className="w-6 h-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+        </div>
+        <p className="text-3xl font-light text-white mb-1">{stats.successfulSales}</p>
+        <p className="text-sm text-slate-400">Ventes réussies</p>
+      </div>
 
-            <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center">
-                  <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-              </div>
-              <p className="text-3xl font-light text-white mb-1">{stats.totalRevenue.toFixed(2)} €</p>
-              <p className="text-sm text-slate-400">Chiffre d'affaires</p>
+      <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
+        <div className="flex items-center justify-between mb-4">
+          <div className="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center">
+            <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          
+          {/* Toggle HT/TTC */}
+          <div className="relative">
+            <div className="flex items-center p-1 bg-slate-700/50 rounded-lg">
+              <button
+                onClick={() => setShowTTC(false)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 ${
+                  !showTTC 
+                    ? 'bg-emerald-500 text-white shadow-lg' 
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                HT
+              </button>
+              <button
+                onClick={() => setShowTTC(true)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 ${
+                  showTTC 
+                    ? 'bg-emerald-500 text-white shadow-lg' 
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                TTC
+              </button>
             </div>
           </div>
+        </div>
+        
+        {/* Montant principal */}
+        <p className="text-3xl font-light text-white mb-3">
+          {(showTTC ? stats.totalRevenue : stats.totalRevenueHT).toFixed(2)} €
+        </p>
+        
+        {/* Label */}
+        <p className="text-sm text-slate-400 mb-3">
+          Chiffre d'affaires {showTTC ? 'TTC' : 'HT'}
+        </p>
+        
+        {/* TVA avec meilleur design */}
+        <div className="mt-4 pt-4 border-t border-slate-700/50">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-slate-400">TVA</span>
+            <span className="text-sm font-medium text-purple-300">
+              {stats.totalTVA.toFixed(2)} €
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
 
           {/* Tableau des transactions */}
           <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-700/50 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-slate-700/30 border-b border-slate-700/50">
-                  <tr>
-                    <th className="px-6 py-4 text-left">
-                      <button
-                        onClick={() => handleSort('date')}
-                        className="flex items-center space-x-1 text-xs font-medium text-slate-400 uppercase tracking-wider hover:text-white transition-colors duration-200"
-                      >
-                        <span>Date</span>
-                        {sortConfig?.key === 'date' && (
-                          <svg className={`w-4 h-4 ${sortConfig.direction === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
-                          </svg>
-                        )}
-                      </button>
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">ID Transaction</th>
-                    <th className="px-6 py-4 text-left">
-                      <button
-                        onClick={() => handleSort('venue')}
-                        className="flex items-center space-x-1 text-xs font-medium text-slate-400 uppercase tracking-wider hover:text-white transition-colors duration-200"
-                      >
-                        <span>Venue</span>
-                        {sortConfig?.key === 'venue' && (
-                          <svg className={`w-4 h-4 ${sortConfig.direction === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
-                          </svg>
-                        )}
-                      </button>
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Catégorie</th>
-                    <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Produit</th>
-                    <th className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => handleSort('amount')}
-                        className="flex items-center space-x-1 text-xs font-medium text-slate-400 uppercase tracking-wider hover:text-white transition-colors duration-200 ml-auto"
-                      >
-                        <span>Montant</span>
-                        {sortConfig?.key === 'amount' && (
-                          <svg className={`w-4 h-4 ${sortConfig.direction === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
-                          </svg>
-                        )}
-                      </button>
-                    </th>
-                    <th className="px-6 py-4 text-left">
-                      <button
-                        onClick={() => handleSort('status')}
-                        className="flex items-center space-x-1 text-xs font-medium text-slate-400 uppercase tracking-wider hover:text-white transition-colors duration-200"
-                      >
-                        <span>Statut</span>
-                        {sortConfig?.key === 'status' && (
-                          <svg className={`w-4 h-4 ${sortConfig.direction === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
-                          </svg>
-                        )}
-                      </button>
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Email Client</th>
-                    <th className="px-6 py-4 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">Réduction</th>
-                    <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Code Promo</th>
-                  </tr>
-                </thead>
+  <tr>
+    <th className="px-6 py-4 text-left">
+      <button onClick={() => handleSort('date')} className="flex items-center space-x-1 text-xs font-medium text-slate-400 uppercase tracking-wider hover:text-white transition-colors duration-200">
+        <span>Date</span>
+        {sortConfig?.key === 'date' && (
+          <svg className={`w-4 h-4 ${sortConfig.direction === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
+          </svg>
+        )}
+      </button>
+    </th>
+    <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">ID Transaction</th>
+    <th className="px-6 py-4 text-left">
+      <button onClick={() => handleSort('venue')} className="flex items-center space-x-1 text-xs font-medium text-slate-400 uppercase tracking-wider hover:text-white transition-colors duration-200">
+        <span>Venue</span>
+        {sortConfig?.key === 'venue' && (
+          <svg className={`w-4 h-4 ${sortConfig.direction === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
+          </svg>
+        )}
+      </button>
+    </th>
+    <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Catégorie</th>
+    <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Produit</th>
+    <th className="px-6 py-4 text-right">
+      <button onClick={() => handleSort('amount')} className="flex items-center space-x-1 text-xs font-medium text-slate-400 uppercase tracking-wider hover:text-white transition-colors duration-200 ml-auto">
+        <span>Montant {showTTC ? 'TTC' : 'HT'}</span>
+        {sortConfig?.key === 'amount' && (
+          <svg className={`w-4 h-4 ${sortConfig.direction === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
+          </svg>
+        )}
+      </button>
+    </th>
+    <th className="px-6 py-4 text-left">
+      <button onClick={() => handleSort('status')} className="flex items-center space-x-1 text-xs font-medium text-slate-400 uppercase tracking-wider hover:text-white transition-colors duration-200">
+        <span>Statut</span>
+        {sortConfig?.key === 'status' && (
+          <svg className={`w-4 h-4 ${sortConfig.direction === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
+          </svg>
+        )}
+      </button>
+    </th>
+    <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Email Client</th>
+    <th className="px-6 py-4 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">Réduction</th>
+    <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Code Promo</th>
+    <th className="px-6 py-4 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Facture</th>
+  </tr>
+</thead>
                 <tbody className="divide-y divide-slate-700/50">
 					{currentSales.map((sale) => {
   const products = sale.productSales || sale.products || [];
@@ -1248,7 +1555,10 @@ const promoCode =
       {/* Montant */}
      <td className="px-6 py-4 text-sm text-right">
   <span className="font-medium text-white">
-    {sale.total_ttc ? `${sale.total_ttc.toFixed(2)} €` : '0.00 €'}
+    {showTTC 
+      ? (sale.total_ttc ? `${sale.total_ttc.toFixed(2)} €` : '0.00 €')
+      : (sale.total_ht ? `${sale.total_ht.toFixed(2)} €` : '0.00 €')
+    }
   </span>
 </td>
       
@@ -1309,15 +1619,41 @@ const promoCode =
           <span className="text-slate-500">-</span>
         )}
       </td>
+	  <td className="px-6 py-4 text-center">
+                <button
+                  onClick={() => handleGenerateInvoice(sale)}
+                  disabled={generatingInvoiceId === (sale.id || sale.vendlive_id)}
+                  className="inline-flex items-center px-3 py-1.5 bg-emerald-600 text-white text-xs font-medium rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                  title="Générer et télécharger la facture PDF"
+                >
+                  {generatingInvoiceId === (sale.id || sale.vendlive_id) ? (
+                    <>
+                      <svg className="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Génération...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                      </svg>
+                      Facture
+                    </>
+                  )}
+                </button>
+              </td>
+	  
     </tr>
   );
-})}
+ })}
+      </tbody>
+    </table>
+  </div>
+</div>
 
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination */}
+	{/* Pagination */}
             {totalPages > 1 && (
               <div className="px-6 py-4 border-t border-slate-700/50">
                 <div className="flex items-center justify-between">
@@ -1346,8 +1682,7 @@ const promoCode =
                 </div>
               </div>
             )}
-          </div>
-        </>
+		</>
       ) : (
         // Onglet Top Produits
         <>
@@ -1423,89 +1758,85 @@ const promoCode =
             </div>
           )}
 
-          {/* Tableau des produits */}
-          <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-700/50 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-700/30 border-b border-slate-700/50">
-                  <tr>
-                    <th className="px-6 py-4 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Rang</th>
-                    <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Produit</th>
-                    <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Catégorie</th>
-                    <th className="px-6 py-4 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">Quantité vendue</th>
-                    <th className="px-6 py-4 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">CA Total</th>
-                    <th className="px-6 py-4 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">Prix moyen</th>
-                    <th className="px-6 py-4 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Venues</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-700/50">
-                  {productStats.products.map((product, index) => (
-                    <tr key={`${product.name}_${product.category}`} className="hover:bg-slate-700/20 transition-colors duration-150">
-                      <td className="px-6 py-4 text-center">
-                        {index < 3 ? (
-                          <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold ${
-                            index === 0 ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
-                            index === 1 ? 'bg-slate-400/20 text-slate-300 border border-slate-400/30' :
-                            'bg-orange-600/20 text-orange-400 border border-orange-600/30'
-                          }`}>
-                            {index + 1}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 font-medium">{index + 1}</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-sm font-medium text-white">
-                        {product.name}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-300">
-                        <span className="inline-block px-2 py-1 text-xs bg-slate-700/50 rounded">
-                          {product.category}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-right text-white">
-                        <div className="flex items-center justify-end space-x-2">
-                          <span className="font-medium">{product.quantity.toLocaleString()}</span>
-                          <span className="text-xs text-slate-400">({product.quantityPercentage.toFixed(1)}%)</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-right text-white">
-                        <div className="flex items-center justify-end space-x-2">
-                          <span className="font-medium">{product.revenue.toFixed(2)} €</span>
-                          <span className="text-xs text-slate-400">({product.revenuePercentage.toFixed(1)}%)</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-right text-slate-300">
-                        {product.averagePrice.toFixed(2)} €
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="inline-flex items-center px-2 py-1 text-xs bg-slate-700/50 text-slate-300 rounded">
-                          {product.venueCount} venue{product.venueCount > 1 ? 's' : ''}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+{/* Tableau des produits */}
+<div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-700/50 overflow-hidden">
+  <div className="overflow-x-auto">
+    <table className="w-full">
+      <thead className="bg-slate-700/30 border-b border-slate-700/50">
+        <tr>
+          <th className="px-6 py-4 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Rang</th>
+          <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Produit</th>
+          <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Catégorie</th>
+          <th className="px-6 py-4 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">Quantité vendue</th>
+          <th className="px-6 py-4 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">CA Total</th>
+          <th className="px-6 py-4 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">Prix moyen</th>
+          <th className="px-6 py-4 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Venues</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-slate-700/50">
+        {productStats.products.map((product, index) => (
+          <tr key={`${product.name}_${product.category}`} className="hover:bg-slate-700/20 transition-colors duration-150">
+            <td className="px-6 py-4 text-center">
+              {index < 3 ? (
+                <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold ${
+                  index === 0 ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
+                  index === 1 ? 'bg-slate-400/20 text-slate-300 border border-slate-400/30' :
+                  'bg-orange-600/20 text-orange-400 border border-orange-600/30'
+                }`}>
+                  {index + 1}
+                </span>
+              ) : (
+                <span className="text-slate-400 font-medium">{index + 1}</span>
+              )}
+            </td>
+            <td className="px-6 py-4 text-sm font-medium text-white">
+              {product.name}
+            </td>
+            <td className="px-6 py-4 text-sm text-slate-300">
+              <span className="inline-block px-2 py-1 text-xs bg-slate-700/50 rounded">
+                {product.category}
+              </span>
+            </td>
+            <td className="px-6 py-4 text-sm text-right text-white">
+              <div className="flex items-center justify-end space-x-2">
+                <span className="font-medium">{product.quantity.toLocaleString()}</span>
+                <span className="text-xs text-slate-400">({product.quantityPercentage.toFixed(1)}%)</span>
+              </div>
+            </td>
+            <td className="px-6 py-4 text-sm text-right text-white">
+              <div className="flex items-center justify-end space-x-2">
+                <span className="font-medium">{product.revenue.toFixed(2)} €</span>
+                <span className="text-xs text-slate-400">({product.revenuePercentage.toFixed(1)}%)</span>
+              </div>
+            </td>
+            <td className="px-6 py-4 text-sm text-right text-slate-300">
+              {product.averagePrice.toFixed(2)} €
+            </td>
+            <td className="px-6 py-4 text-center">
+              <span className="inline-flex items-center px-2 py-1 text-xs bg-slate-700/50 text-slate-300 rounded">
+                {product.venueCount} venue{product.venueCount > 1 ? 's' : ''}
+              </span>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</div>
         </>
       )}
 
-      {/* Modal Date Picker */}
+{/* Modal Date Picker */}
       {showDatePicker && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-slate-800 rounded-2xl shadow-2xl border border-slate-700">
             <CustomDateRangePicker
-              startDate={customDateRange.start}
-              endDate={customDateRange.end}
+              startDate={toYMD(customDateRange.start)}
+              endDate={toYMD(customDateRange.end)}
               onDateChange={(start, end) => {
-                setCustomDateRange({ start, end });
-              }}
-              onClose={() => {
+                setCustomDateRange({ start: new Date(start), end: new Date(end) });
+                setSelectedPeriod('custom');
                 setShowDatePicker(false);
-                if (!customDateRange.start || !customDateRange.end) {
-                  setSelectedPeriod('all');
-                }
               }}
             />
           </div>

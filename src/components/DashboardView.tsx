@@ -188,131 +188,139 @@ const DashboardView = ({
 
   return (
     <div className="space-y-8">
-      {/* Titre clean sans filtre */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-light text-white">Analytics</h2>
-          <p className="text-slate-400 mt-1">
-            Vue d'ensemble de votre activité Shape Eat
-          </p>
-        </div>
+      {/* Titre clean sans période */}
+<div className="flex items-center justify-between">
+  <div>
+    <h2 className="text-3xl font-light text-white">Analytics</h2>
+    <p className="text-slate-400 mt-1">
+      Vue d'ensemble de votre activité Shape Eat
+    </p>
+  </div>
 
         {/* Bouton recharger */}
-        <button
-          onClick={onLoadAll}
-          disabled={isLoading}
-          className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 shadow-lg disabled:opacity-50"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          <span className="font-medium">Recharger</span>
-        </button>
-      </div>
+	  <button
+		onClick={onLoadAll}
+		disabled={isLoading}
+		className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 shadow-lg disabled:opacity-50"
+	  >
+		<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+		</svg>
+		<span className="font-medium">Recharger</span>
+	  </button>
+	</div>
 
       {/* FILTRES DE PÉRIODE AU-DESSUS DES KPI */}
-      <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-6">
-        <div className="flex flex-col space-y-4">
-          <div>
-            <h3 className="text-lg font-medium text-white mb-2">
-              Période d'analyse
-              {dateFilter !== 'custom' && (
-                <span className="text-emerald-400 font-normal ml-3">
-                  {(() => {
-                    const today = new Date();
-                    const formatDate = (date: Date) => {
-                      const day = date.getDate().toString().padStart(2, '0');
-                      const month = (date.getMonth() + 1).toString().padStart(2, '0');
-                      const year = date.getFullYear();
-                      return `${day}/${month}/${year}`;
-                    };
-
-                    switch (dateFilter) {
-                      case 'yesterday': {
-                        const yesterday = new Date(today);
-                        yesterday.setDate(yesterday.getDate() - 1);
-                        return formatDate(yesterday);
-                      }
-                      case 'today': 
-                        return formatDate(today);
-                      case '7days': {
-                        const sevenDaysAgo = new Date(today);
-                        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-                        return `${formatDate(sevenDaysAgo)} - ${formatDate(today)}`;
-                      }
-                      case '30days': {
-                        const thirtyDaysAgo = new Date(today);
-                        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
-                        return `${formatDate(thirtyDaysAgo)} - ${formatDate(today)}`;
-                      }
-                      default: 
-                        return '';
-                    }
-                  })()}
-                </span>
-              )}
-              {dateFilter === 'custom' && customStartDate && customEndDate && (
-                <span className="text-emerald-400 font-normal ml-3">
-                  {customStartDate} - {customEndDate}
-                </span>
-              )}
-            </h3>
-            <p className="text-slate-400 text-sm">
-              Sélectionnez la période pour analyser vos données de vente
-            </p>
-          </div>
+     <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-6">
+	  <div className="flex flex-col space-y-4">
+		<div>
+		  <div className="flex items-center gap-4 mb-2">
+			<h3 className="text-lg font-medium text-white">
+			  Période d'analyse
+			</h3>
+			{/* Badge de période */}
+			{dateFilter && (() => {
+			  const formatDate = (date: Date) => {
+				return date.toLocaleDateString('fr-FR', {
+				  day: '2-digit',
+				  month: '2-digit',
+				  year: 'numeric'
+				});
+			  };
+			  
+			  const today = new Date();
+			  let displayText = '';
+			  
+			  switch (dateFilter) {
+				case 'yesterday': {
+				  const yesterday = new Date(today);
+				  yesterday.setDate(yesterday.getDate() - 1);
+				  displayText = formatDate(yesterday);
+				  break;
+				}
+				case 'today': 
+				  displayText = formatDate(today);
+				  break;
+				case '7days': {
+				  const sevenDaysAgo = new Date(today);
+				  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+				  displayText = `${formatDate(sevenDaysAgo)} - ${formatDate(today)}`;
+				  break;
+				}
+				case '30days': {
+				  const thirtyDaysAgo = new Date(today);
+				  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+				  displayText = `${formatDate(thirtyDaysAgo)} - ${formatDate(today)}`;
+				  break;
+				}
+				case 'custom':
+				  if (customStartDate && customEndDate) {
+					displayText = `${customStartDate} - ${customEndDate}`;
+				  }
+				  break;
+			  }
+			  
+			  return displayText && (
+				<div className="flex items-center gap-2 px-3 py-1 bg-slate-700/30 rounded-lg">
+				  <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+				  </svg>
+				  <span className="text-sm text-emerald-300">
+					{displayText}
+				  </span>
+				</div>
+			  );
+			})()}
+		  </div>
+		  <p className="text-slate-400 text-sm">
+			Sélectionnez la période pour analyser vos données de vente
+		  </p>
+		</div>
           
           {/* Boutons de filtre */}
-          <div className="flex flex-wrap gap-3">
-            {[
-              { key: 'yesterday', label: 'Hier' },
-              { key: 'today', label: "Aujourd'hui" },
-              { key: '7days', label: '7 jours' },
-              { key: '30days', label: '30 jours' },
-              { key: 'custom', label: 'Personnalisé' }
-            ].map(filter => (
-              <button
-                key={filter.key}
-                onClick={() => setDateFilter(filter.key)}
-                disabled={loadingPeriod}
-                className={`px-6 py-3 rounded-xl text-sm font-medium transition-all duration-200 disabled:opacity-50 ${
-                  dateFilter === filter.key
-                    ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg transform scale-105'
-                    : 'bg-slate-700/50 text-slate-300 hover:bg-slate-600/50 hover:text-white hover:scale-105'
-                }`}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
+           <div className="flex flex-wrap gap-3">
+		  {[
+			{ key: 'yesterday', label: 'Hier' },
+			{ key: 'today', label: "Aujourd'hui" },
+			{ key: '7days', label: '7 jours' },
+			{ key: '30days', label: '30 jours' },
+			{ key: 'custom', label: 'Personnalisé' }
+		  ].map(filter => (
+			<button
+			  key={filter.key}
+			  onClick={() => setDateFilter(filter.key)}
+			  disabled={loadingPeriod}
+			  className={`px-6 py-3 rounded-xl text-sm font-medium transition-all duration-200 disabled:opacity-50 ${
+				dateFilter === filter.key
+				  ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg transform scale-105'
+				  : 'bg-slate-700/50 text-slate-300 hover:bg-slate-600/50 hover:text-white hover:scale-105'
+			  }`}
+			>
+			  {filter.label}
+			</button>
+		  ))}
+		</div>
 
           {/* Sélecteur de dates personnalisées */}
-          {dateFilter === 'custom' && (
-            <div className="pt-4 border-t border-slate-700/50">
-              <div className="max-w-md">
-                <label className="block text-sm font-medium text-slate-300 mb-4">
-                  📅 Sélectionnez une période personnalisée
-                </label>
-                <CustomDateRangePicker
-                  startDate={customStartDate}
-                  endDate={customEndDate}
-                  onDateChange={(start, end) => {
-                    setCustomStartDate(start);
-                    setCustomEndDate(end);
-                  }}
-                />
-                {customStartDate && customEndDate && (
-                  <div className="mt-4 p-3 bg-emerald-500/20 border border-emerald-500/30 rounded-lg">
-                    <p className="text-emerald-200 text-sm">
-                      📊 Période sélectionnée: du {customStartDate} au {customEndDate}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+              {dateFilter === 'custom' && (
+		  <div className="pt-4 border-t border-slate-700/50">
+			<div className="max-w-md">
+			  <label className="block text-sm font-medium text-slate-300 mb-4">
+				📅 Sélectionnez une période personnalisée
+			  </label>
+			  <CustomDateRangePicker
+				startDate={customStartDate}
+				endDate={customEndDate}
+				onDateChange={(start, end) => {
+				  setCustomStartDate(start);
+				  setCustomEndDate(end);
+				}}
+			  />
+			</div>
+		  </div>
+		)}
+	  </div>
+	</div>
 
       {/* Indicateur de chargement période */}
       {loadingPeriod && (

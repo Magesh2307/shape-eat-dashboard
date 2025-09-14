@@ -1,33 +1,33 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import CustomDateRangePicker from './CustomDateRangePicker';
 
-interface Sale {
+const supabase = createClient(
+  'https://ojphshzuosbfbftpoigy.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qcGhzaHp1b3NiZmJmdHBvaWd5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTQ1Mjc3MCwiZXhwIjoyMDY3MDI4NzcwfQ.ze3DvmYHGmDlOvBaE-SxCDaQwzAF6YoLsKjKPebXU4Q'
+);
+
+// 🔧 INTERFACE BASÉE SUR VOS VRAIES DONNÉES SUPABASE
+interface Order {
   id: string;
-  createdAt: string;
-  total?: string;
-  totalCharged?: string;
-  productSales?: Array<{
-    product?: {
-      id: number;
-      name: string;
-      category?: {
-        name: string;
-      };
-    };
-    productName?: string;
-    totalPaid?: string;
-    vendStatus: string;
-    isRefunded?: boolean;
-  }>;
-  location?: {
-    venue?: {
-      id: number;
-      name: string;
-    };
-  };
-  locationName?: string;
+  vendlive_id: string;
+  product_name: string;        // Ajouter
+  product_category: string;    // Ajouter
+  product_id: string;          // Ajouter
+  price_ttc: string;          // Ajouter
+  quantity: string;           // Ajouter
+  venue_name?: string;
+  venue_id?: number;
+  status: string;
+  is_refunded: boolean;
+  created_at: string;
 }
 
+interface ProductsViewProps {
+  sales: Order[]; // Ce sont des orders individuels depuis App.tsx
+}
+
+// 1. Ajouter l'interface ProductSummary
 interface ProductSummary {
   productId: string;
   productName: string;
@@ -37,11 +37,37 @@ interface ProductSummary {
   venues: Set<string>;
 }
 
-interface ProductsViewProps {
-  sales: Sale[];
-}
-
 const ProductsView: React.FC<ProductsViewProps> = ({ sales = [] }) => {
+  // Ajouter ces états
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(true);
+
+  // Charger les orders au montage
+  useEffect(() => {
+    const loadOrders = async () => {
+      setIsLoadingOrders(true);
+      try {
+        const { data, error } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('status', 'completed')
+          .eq('is_refunded', false)
+          .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        
+        console.log('Orders chargés:', data?.length);
+        setOrders(data || []);
+      } catch (error) {
+        console.error('Erreur chargement orders:', error);
+      } finally {
+        setIsLoadingOrders(false);
+      }
+    };
+    
+    loadOrders();
+  }, []);
+
   // États pour les filtres
   const [dateFilter, setDateFilter] = useState<'yesterday' | 'today' | '7days' | '30days' | 'custom'>('30days');
   const [customStartDate, setCustomStartDate] = useState('');
@@ -87,106 +113,122 @@ const ProductsView: React.FC<ProductsViewProps> = ({ sales = [] }) => {
     }
   };
 
-  // Extraire toutes les venues et catégories uniques
-  const { allVenues, allCategories } = useMemo(() => {
-    const venuesSet = new Set<string>();
-    const categoriesSet = new Set<string>();
+  // Extraire venues et catégories uniques depuis vos vraies données
+const { allVenues, allCategories } = useMemo(() => {
+  const venuesSet = new Set<string>();
+  const categoriesSet = new Set<string>();
 
-    sales.forEach(sale => {
-      const venueName = sale.location?.venue?.name || sale.locationName || 'Venue inconnue';
-      venuesSet.add(venueName);
+  orders.forEach(order => {  // ← Utiliser orders
+    if (order.venue_name) {
+      venuesSet.add(order.venue_name);
+    }
+    if (order.product_category) {
+      categoriesSet.add(order.product_category);
+    }
+  });
 
-      sale.productSales?.forEach(ps => {
-        const category = ps.product?.category?.name || 'Sans catégorie';
-        categoriesSet.add(category);
-      });
-    });
+  return {
+    allVenues: Array.from(venuesSet),
+    allCategories: Array.from(categoriesSet)
+  };
+}, [orders]);
 
-    return {
-      allVenues: Array.from(venuesSet).sort(),
-      allCategories: Array.from(categoriesSet).sort()
-    };
-  }, [sales]);
+  // ✅ CALCUL DES STATS PRODUITS AVEC VOS VRAIES DONNÉES
+const productStats = useMemo(() => {
+  if (isLoadingOrders) return []; // ← Ajouter cette condition
+  
+  const { start, end } = getDateRange();
+  const productsMap = new Map<string, ProductSummary>();
 
-  // Calculer les statistiques des produits
-  const productStats = useMemo(() => {
-    const { start, end } = getDateRange();
-    const productsMap = new Map<string, ProductSummary>();
-
-    // Filtrer les ventes par date et venue
-    const filteredSales = sales.filter(sale => {
-      const saleDate = new Date(sale.createdAt);
-      const saleDateOnly = new Date(saleDate.getFullYear(), saleDate.getMonth(), saleDate.getDate());
-      
-      // Filtre par date
-      if (saleDateOnly < start || saleDateOnly > end) return false;
-      
-      // Filtre par venue
-      const venueName = sale.location?.venue?.name || sale.locationName || 'Venue inconnue';
-      if (selectedVenue !== 'all' && venueName !== selectedVenue) return false;
-      
-      return true;
-    });
-
-    // Agréger les données par produit
-    filteredSales.forEach(sale => {
-      const venueName = sale.location?.venue?.name || sale.locationName || 'Venue inconnue';
-      
-      sale.productSales?.forEach(ps => {
-        // Exclure les remboursements et les ventes échouées
-        if (ps.isRefunded || ps.vendStatus !== 'Success') return;
-        
-        const productId = ps.product?.id?.toString() || ps.productName || 'unknown';
-        const productName = ps.product?.name || ps.productName || 'Produit inconnu';
-        const category = ps.product?.category?.name || 'Sans catégorie';
-        const revenue = parseFloat(ps.totalPaid || sale.total || sale.totalCharged || '0');
-        
-        // Filtre par catégorie
-        if (categoryFilter !== 'all' && category !== categoryFilter) return;
-        
-        // Filtre par recherche
-        if (searchTerm) {
-          const term = searchTerm.toLowerCase();
-          if (!productName.toLowerCase().includes(term) && 
-              !category.toLowerCase().includes(term)) {
-            return;
-          }
-        }
-        
-        if (!productsMap.has(productId)) {
-          productsMap.set(productId, {
-            productId,
-            productName,
-            category,
-            quantity: 0,
-            totalRevenue: 0,
-            venues: new Set()
-          });
-        }
-        
-        const product = productsMap.get(productId)!;
-        product.quantity += 1;
-        product.totalRevenue += revenue;
-        product.venues.add(venueName);
-      });
-    });
-
-    // Convertir en array et trier
-    const productsArray = Array.from(productsMap.values());
+  // Filtrer les orders
+  const filteredOrders = orders.filter(order => { // ← Utiliser orders
+    const orderDate = new Date(order.created_at);
+    const orderDateOnly = new Date(orderDate.getFullYear(), orderDate.getMonth(), orderDate.getDate());
     
-    // Trier selon le critère sélectionné
-    productsArray.sort((a, b) => {
-      if (sortBy === 'quantity') {
-        return b.quantity - a.quantity;
-      } else {
-        return b.totalRevenue - a.totalRevenue;
+    if (orderDateOnly < start || orderDateOnly > end) return false;
+    if (selectedVenue !== 'all' && order.venue_name !== selectedVenue) return false;
+    if (order.is_refunded) return false;
+    if (order.status !== 'completed') return false;
+    
+    return true;
+  });
+
+  console.log(`✅ Filtrage: ${filteredOrders.length} orders valides sur ${orders.length} total`);
+
+  // Agrégation (utiliser filteredSales, pas filteredOrders)
+  filteredOrders.forEach((order, index) => {
+    const venueName = String(order.venue_name || 'Venue inconnue').trim();
+    const productName = String(order.product_name || 'Produit inconnu').trim();
+    const category = String(order.product_category || 'Sans catégorie').trim();
+    
+    // Filtre par catégorie
+    if (categoryFilter !== 'all' && category !== categoryFilter) return;
+    
+    // Filtre par recherche
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      if (!productName.toLowerCase().includes(term) && 
+          !category.toLowerCase().includes(term)) {
+        return;
       }
-    });
+    }
 
-    // Limiter au top N
-    return productsArray.slice(0, showTopN);
-  }, [sales, dateFilter, customStartDate, customEndDate, selectedVenue, categoryFilter, searchTerm, sortBy, showTopN]);
+    const productId = order.product_id?.toString() || productName;
+    const quantity = parseInt(order.quantity) || 1;
+const normalizePrice = (price: any): number => {
+  if (typeof price === 'number') return price;
+  const cleanPrice = String(price || '0')
+    .replace(',', '.')
+    .replace(/[^\d.-]/g, ''); // Supprime tout sauf chiffres, points et tirets
+  return parseFloat(cleanPrice) || 0;
+};
 
+const unitPrice = normalizePrice(order.price_ttc);
+const revenue = unitPrice * quantity;
+    
+    // Ignorer si prix à 0
+    if (unitPrice <= 0) {
+      console.warn(`Prix invalide pour ${productName}:`, { unitPrice });
+      return;
+    }
+    
+    if (!productsMap.has(productId)) {
+      productsMap.set(productId, {
+        productId,
+        productName,
+        category,
+        quantity: 0,
+        totalRevenue: 0,
+        venues: new Set()
+      });
+    }
+    
+    const productSummary = productsMap.get(productId)!;
+    productSummary.quantity += quantity;
+    productSummary.totalRevenue += revenue;
+    productSummary.venues.add(venueName);
+  });
+
+  // Convertir en array
+  const productsArray = Array.from(productsMap.values());
+  
+  const totalRevenue = productsArray.reduce((sum, p) => sum + p.totalRevenue, 0);
+  const totalQuantity = productsArray.reduce((sum, p) => sum + p.quantity, 0);
+  
+});
+  
+  // Trier selon le critère sélectionné
+  productsArray.sort((a, b) => {
+    if (sortBy === 'quantity') {
+      return b.quantity - a.quantity;
+    } else {
+      return b.totalRevenue - a.totalRevenue;
+    }
+  });
+
+  // Limiter au top N
+  return productsArray.slice(0, showTopN);
+}, [orders, dateFilter, customStartDate, customEndDate, selectedVenue, categoryFilter, searchTerm, sortBy, showTopN, isLoadingOrders]);
   // Calculer les totaux
   const totals = useMemo(() => {
     return productStats.reduce((acc, product) => ({
@@ -216,7 +258,7 @@ const ProductsView: React.FC<ProductsViewProps> = ({ sales = [] }) => {
         </p>
       </div>
 
-      {/* Filtres */}
+      {/* Filtres - Même structure que l'original */}
       <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-6">
         <div className="space-y-4">
           {/* Ligne 1: Filtres de date */}
@@ -323,25 +365,16 @@ const ProductsView: React.FC<ProductsViewProps> = ({ sales = [] }) => {
           <div className="flex items-center justify-between">
             <div className="flex flex-wrap gap-2">
               <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400">
-                <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zM4 8h12v8H4V8z" clipRule="evenodd" />
-                </svg>
-                {getFilterLabel()}
+                📅 {getFilterLabel()}
               </span>
               {selectedVenue !== 'all' && (
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-500/20 text-purple-400">
-                  <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
-                  </svg>
-                  {selectedVenue}
+                  🏢 {selectedVenue}
                 </span>
               )}
               {categoryFilter !== 'all' && (
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400">
-                  <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clipRule="evenodd" />
-                  </svg>
-                  {categoryFilter}
+                  🏷️ {categoryFilter}
                 </span>
               )}
             </div>
@@ -382,7 +415,7 @@ const ProductsView: React.FC<ProductsViewProps> = ({ sales = [] }) => {
         </div>
       </div>
 
-      {/* Tableau des produits */}
+      {/* Tableau des produits - Structure identique mais avec les bonnes données */}
       <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full">
@@ -420,7 +453,7 @@ const ProductsView: React.FC<ProductsViewProps> = ({ sales = [] }) => {
                 </tr>
               ) : (
                 productStats.map((product, index) => {
-                  const avgPrice = product.totalRevenue / product.quantity;
+                  const avgPrice = product.quantity > 0 ? product.totalRevenue / product.quantity : 0;
                   const rankColor = index === 0 ? 'text-yellow-400' : 
                                    index === 1 ? 'text-slate-300' : 
                                    index === 2 ? 'text-orange-400' : 'text-slate-400';
@@ -447,7 +480,7 @@ const ProductsView: React.FC<ProductsViewProps> = ({ sales = [] }) => {
                           {product.quantity.toLocaleString()}
                         </div>
                         <div className="text-xs text-slate-400">
-                          {((product.quantity / totals.quantity) * 100).toFixed(1)}%
+                          {totals.quantity > 0 ? ((product.quantity / totals.quantity) * 100).toFixed(1) : '0'}%
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
@@ -455,7 +488,7 @@ const ProductsView: React.FC<ProductsViewProps> = ({ sales = [] }) => {
                           {product.totalRevenue.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
                         </div>
                         <div className="text-xs text-slate-400">
-                          {((product.totalRevenue / totals.revenue) * 100).toFixed(1)}%
+                          {totals.revenue > 0 ? ((product.totalRevenue / totals.revenue) * 100).toFixed(1) : '0'}%
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
@@ -477,7 +510,7 @@ const ProductsView: React.FC<ProductsViewProps> = ({ sales = [] }) => {
         </div>
       </div>
 
-      {/* Graphique simple en barres */}
+      {/* Graphique simple en barres - Structure identique */}
       {productStats.length > 0 && (
         <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-6">
           <h3 className="text-lg font-medium text-white mb-4">
@@ -485,9 +518,9 @@ const ProductsView: React.FC<ProductsViewProps> = ({ sales = [] }) => {
           </h3>
           <div className="space-y-3">
             {productStats.slice(0, 10).map((product, index) => {
-              const maxValue = productStats[0][sortBy === 'revenue' ? 'totalRevenue' : 'quantity'];
+              const maxValue = productStats[0] ? productStats[0][sortBy === 'revenue' ? 'totalRevenue' : 'quantity'] : 1;
               const currentValue = product[sortBy === 'revenue' ? 'totalRevenue' : 'quantity'];
-              const percentage = (currentValue / maxValue) * 100;
+              const percentage = maxValue > 0 ? (currentValue / maxValue) * 100 : 0;
               
               return (
                 <div key={product.productId} className="flex items-center gap-4">
