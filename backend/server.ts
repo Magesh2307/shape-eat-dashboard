@@ -64,11 +64,16 @@ const getVendliveHeaders = (): Record<string, string> => ({
 // 🔒 Fonction utilitaire pour les appels API sécurisés
 async function makeVendliveRequest(endpoint: string): Promise<VendliveResponse> {
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    
     const response = await fetch(`${VENDLIVE_BASE_URL}${endpoint}`, {
       headers: getVendliveHeaders(),
-      timeout: 30000 // 30 secondes timeout
+      signal: controller.signal
     });
-
+    
+    clearTimeout(timeoutId);
+    
     if (!response.ok) {
       throw new Error(`Erreur API Vendlive ${response.status}: ${response.statusText}`);
     }
