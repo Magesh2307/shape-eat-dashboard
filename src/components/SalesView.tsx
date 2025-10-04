@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import ReactDOM from 'react-dom';
+import ReactDOM from 'react-dom'; // Ajoutez cette ligne
 import CustomDateRangePicker from './CustomDateRangePicker';
 import { generateInvoicePDF, generateInvoiceNumber } from "./utils/invoice";
 
@@ -52,7 +52,8 @@ interface Sale {
 }
 
 interface SalesViewProps {
-  sales: Sale[];
+  sales: any[];
+  supabase: any;
 }
 
 const toYMD = (d: Date | null) =>
@@ -120,7 +121,7 @@ const DropdownPortal: React.FC<{
   );
 };
 
-const SalesView: React.FC<SalesViewProps> = ({ sales }) => {
+const SalesView: React.FC<SalesViewProps> = ({ sales, supabase }) => {
   // État de chargement
   const [isProcessing, setIsProcessing] = useState(false);
   

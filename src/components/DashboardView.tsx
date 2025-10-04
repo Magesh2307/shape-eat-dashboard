@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from 'react';
 import CustomDateRangePicker from './CustomDateRangePicker';
 
 interface Sale {
@@ -93,7 +93,7 @@ const DashboardView = ({
   };
 
   // Charger les stats quand le filtre change
-  React.useEffect(() => {
+  useEffect(() => {
     if (dateFilter === 'custom' && customStartDate && customEndDate) {
       loadPeriodStats('custom', customStartDate, customEndDate);
     } else if (dateFilter !== 'custom') {
@@ -140,7 +140,7 @@ const DashboardView = ({
 };
 
   // Stats à afficher selon la période sélectionnée
-  const displayStats = React.useMemo(() => {
+  const displayStats = useMemo(() => {
     if (loadingPeriod) {
       return {
         totalRevenue: 0,
