@@ -10,7 +10,7 @@ const VENDLIVE_API_URL = process.env.VENDLIVE_API_URL;
 const VENDLIVE_TOKEN = process.env.VENDLIVE_TOKEN;
 const VENDLIVE_ACCOUNT_ID = process.env.VENDLIVE_ACCOUNT_ID;
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL!;
+const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 // 🔍 DEBUG - Vérifier les variables d'environnement
