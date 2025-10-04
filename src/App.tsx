@@ -201,6 +201,7 @@ function App() {
     totalRevenue: 0
   });
   const [loadingProgress, setLoadingProgress] = useState('');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Gestion de l'authentification
   useEffect(() => {
@@ -720,7 +721,7 @@ if (isLoading && sales.length === 0) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800">
       {/* Sidebar moderne */}
-      <div className="fixed inset-y-0 left-0 z-50 w-64 bg-slate-800/95 backdrop-blur-xl border-r border-slate-700/50">
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-800/95 backdrop-blur-xl border-r border-slate-700/50 transform transition-transform duration-200 lg:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full">
           {/* Logo */}
           <div className="p-6 border-b border-slate-700/50">
@@ -814,26 +815,42 @@ if (isLoading && sales.length === 0) {
           </div>
         </div>
       </div>
-
+		{/* Overlay mobile */}
+		{isMobileMenuOpen && (
+		  <div 
+			className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+			onClick={() => setIsMobileMenuOpen(false)}
+		  />
+		)}
       {/* Contenu principal */}
-      <div className="ml-64">
+      <div className="lg:ml-64">
         {/* Header SANS FILTRES */}
-        <header className="bg-slate-800/50 backdrop-blur-xl border-b border-slate-700/50 px-8 py-6">
+        <header className="bg-slate-800/50 backdrop-blur-xl border-b border-slate-700/50 px-4 lg:px-8 py-4 lg:py-6">
+  <div className="flex items-center justify-between">
+    {/* Bouton menu mobile */}
+    <button
+      onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+      className="lg:hidden p-2 text-white mr-4"
+    >
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+      </svg>
+    </button>
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-light text-white mb-1">
+              <h1 className="text-lg lg:text-2xl font-light text-white mb-1">
                 {activeView === 'dashboard' && 'Analytics Dashboard'}
                 {activeView === 'sales' && 'Ventes & Produits'}
                 {activeView === 'machines' && 'Gestion des Machines'}
               </h1>
-              <p className="text-slate-400 text-sm">
+             <p className="hidden lg:block text-slate-400 text-sm">
                 {activeView === 'dashboard' && 'Vue d\'ensemble de votre activité Shape Eat'}
                 {activeView === 'sales' && 'Analyse complète des ventes et produits'}
                 {activeView === 'machines' && 'Supervision de votre parc de machines'}
               </p>
             </div>
             
-            <div className="flex items-center space-x-4">
+            <div className="hidden lg:flex items-center space-x-4">
               {/* Bouton pour recharger toutes les données */}
               {!isLoading && (
                 <button
@@ -856,7 +873,7 @@ if (isLoading && sales.length === 0) {
       {session?.user?.email?.charAt(0).toUpperCase() || 'U'}
     </span>
   </div>
-  <div className="text-sm">
+  <div className="hidden lg:block text-sm">
     <p className="text-white font-medium">{session?.user?.email || 'Utilisateur'}</p>
     <p className="text-slate-400 text-xs">Admin</p>
   </div>
