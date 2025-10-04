@@ -850,14 +850,26 @@ if (isLoading && sales.length === 0) {
               )}
               
               {/* Avatar utilisateur */}
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full flex items-center justify-center">
-                  <span className="text-white text-sm font-medium">U</span>
-                </div>
-                <div className="text-sm">
-                  <p className="text-white font-medium">Utilisateur</p>
-                  <p className="text-slate-400 text-xs">Admin</p>
-                </div>
+<div className="flex items-center space-x-3">
+  <div className="w-8 h-8 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full flex items-center justify-center">
+    <span className="text-white text-sm font-medium">
+      {session?.user?.email?.charAt(0).toUpperCase() || 'U'}
+    </span>
+  </div>
+  <div className="text-sm">
+    <p className="text-white font-medium">{session?.user?.email || 'Utilisateur'}</p>
+    <p className="text-slate-400 text-xs">Admin</p>
+  </div>
+  <button
+    onClick={handleSignOut}
+    className="ml-2 px-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-all duration-200"
+    title="Se déconnecter"
+  >
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+    </svg>
+  </button>
+</div>
               </div>
             </div>
           </div>
