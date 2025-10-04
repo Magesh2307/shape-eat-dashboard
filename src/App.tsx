@@ -661,46 +661,61 @@ const handleLoadAll = async () => {
   }
 };
 
-  // useEffect principal - Chargement initial avec Supabase
-  useEffect(() => {
-    const loadData = async () => {
-      console.log('🚀 === DÉMARRAGE AVEC SUPABASE ===');
-      console.log('📊 Chargement de toutes les données disponibles');
-      
-      try {
-        // Charger les machines
-        await fetchMachinesData();
-        
-        // Charger les ventes depuis Supabase
-        await loadDataFromSupabase();
-        
-        console.log('✅ Initialisation terminée');
-      } catch (err) {
-        console.error('❌ Erreur initialisation:', err);
-        setError('Erreur lors du chargement des données');
-        setIsLoading(false);
-      }
-    };
+// useEffect principal - CORRIGÉ
+useEffect(() => {
+  // Ne charger que si authentifié
+  if (!session || loading) return;
+  
+  const loadData = async () => {
+    console.log('🚀 === DÉMARRAGE AVEC SUPABASE ===');
     
-    loadData();
-  }, []);
+    try {
+      await fetchMachinesData();
+      await loadDataFromSupabase();
+      console.log('✅ Initialisation terminée');
+    } catch (err) {
+      console.error('❌ Erreur initialisation:', err);
+      setError('Erreur lors du chargement des données');
+      setIsLoading(false);
+    }
+  };
+  
+  loadData();
+}, [session, loading]); // ← AJOUTEZ session ET loading comme dépendances
 
-  if (isLoading && sales.length === 0) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-20 h-20 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-2xl shadow-2xl flex items-center justify-center mb-6 mx-auto animate-pulse">
-            <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-          </div>
-          <h2 className="text-2xl font-light text-white mb-2">Shape Eat Analytics</h2>
-          <p className="text-slate-400 font-light">Chargement des données...</p>
-          {loadingProgress && (
-            <p className="text-emerald-400 text-sm mt-2">{loadingProgress}</p>
-          )}
+  if (loading) {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center">
+      <div className="text-center">
+        <div className="w-20 h-20 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-2xl shadow-2xl flex items-center justify-center mb-6 mx-auto animate-pulse">
+          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
         </div>
+        <h2 className="text-2xl font-light text-white mb-2">Vérification de l'authentification...</h2>
       </div>
-    );
-  }
+    </div>
+  );
+}
+
+if (!session) {
+  return <LoginForm />;
+}
+
+if (isLoading && sales.length === 0) {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center">
+      <div className="text-center">
+        <div className="w-20 h-20 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-2xl shadow-2xl flex items-center justify-center mb-6 mx-auto animate-pulse">
+          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+        </div>
+        <h2 className="text-2xl font-light text-white mb-2">Shape Eat Analytics</h2>
+        <p className="text-slate-400 font-light">Chargement des données...</p>
+        {loadingProgress && (
+          <p className="text-emerald-400 text-sm mt-2">{loadingProgress}</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800">
