@@ -825,7 +825,7 @@ if (isLoading && sales.length === 0) {
       {/* Contenu principal */}
       <div className="lg:ml-64">
         {/* Header SANS FILTRES */}
-        <header className="bg-slate-800/50 backdrop-blur-xl border-b border-slate-700/50 px-4 lg:px-8 py-4 lg:py-6">
+<header className="bg-slate-800/50 backdrop-blur-xl border-b border-slate-700/50 px-4 lg:px-8 py-4 lg:py-6">
   <div className="flex items-center justify-between">
     {/* Bouton menu mobile */}
     <button
@@ -836,60 +836,58 @@ if (isLoading && sales.length === 0) {
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
       </svg>
     </button>
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-lg lg:text-2xl font-light text-white mb-1">
-                {activeView === 'dashboard' && 'Analytics Dashboard'}
-                {activeView === 'sales' && 'Ventes & Produits'}
-                {activeView === 'machines' && 'Gestion des Machines'}
-              </h1>
-             <p className="hidden lg:block text-slate-400 text-sm">
-                {activeView === 'dashboard' && 'Vue d\'ensemble de votre activité Shape Eat'}
-                {activeView === 'sales' && 'Analyse complète des ventes et produits'}
-                {activeView === 'machines' && 'Supervision de votre parc de machines'}
-              </p>
-            </div>
-            
-            <div className="hidden lg:flex items-center space-x-4">
-              {/* Bouton pour recharger toutes les données */}
-              {!isLoading && (
-                <button
-                  onClick={handleLoadAll}
-                  className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 shadow-lg"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  <span className="text-sm font-medium">
-                    Charger tout
-                  </span>
-                </button>
-              )}
-              
-              {/* Avatar utilisateur */}
-<div className="flex items-center space-x-3">
-  <div className="w-8 h-8 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full flex items-center justify-center">
-    <span className="text-white text-sm font-medium">
-      {session?.user?.email?.charAt(0).toUpperCase() || 'U'}
-    </span>
+
+    <div className="flex-1">
+      <h1 className="text-lg lg:text-2xl font-light text-white mb-1">
+        {activeView === 'dashboard' && 'Analytics Dashboard'}
+        {activeView === 'sales' && 'Ventes & Produits'}
+        {activeView === 'machines' && 'Gestion des Machines'}
+      </h1>
+      <p className="hidden lg:block text-slate-400 text-sm">
+        {activeView === 'dashboard' && 'Vue d\'ensemble de votre activité Shape Eat'}
+        {activeView === 'sales' && 'Analyse complète des ventes et produits'}
+        {activeView === 'machines' && 'Supervision de votre parc de machines'}
+      </p>
+    </div>
+    
+    <div className="flex items-center space-x-4">
+      {/* Bouton Charger tout - caché sur mobile */}
+      {!isLoading && (
+        <button
+          onClick={handleLoadAll}
+          className="hidden lg:flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 shadow-lg"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          <span className="text-sm font-medium">Charger tout</span>
+        </button>
+      )}
+      
+      {/* Avatar utilisateur */}
+      <div className="flex items-center space-x-3">
+        <div className="w-8 h-8 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full flex items-center justify-center">
+          <span className="text-white text-sm font-medium">
+            {session?.user?.email?.charAt(0).toUpperCase() || 'U'}
+          </span>
+        </div>
+        <div className="hidden lg:block text-sm">
+          <p className="text-white font-medium">{session?.user?.email || 'Utilisateur'}</p>
+          <p className="text-slate-400 text-xs">Admin</p>
+        </div>
+        <button
+          onClick={handleSignOut}
+          className="ml-2 px-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-all duration-200"
+          title="Se déconnecter"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+        </button>
+      </div>
+    </div>
   </div>
-  <div className="hidden lg:block text-sm">
-    <p className="text-white font-medium">{session?.user?.email || 'Utilisateur'}</p>
-    <p className="text-slate-400 text-xs">Admin</p>
-  </div>
-  <button
-    onClick={handleSignOut}
-    className="ml-2 px-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-all duration-200"
-    title="Se déconnecter"
-  >
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-    </svg>
-  </button>
-</div>  {/* Ferme le conteneur Avatar */}
-            </div>  {/* Ferme le conteneur des actions (boutons + avatar) */}
-          </div>  {/* Ferme le conteneur principal du header */}
-        </header>
+</header>
 
         {/* Messages d'erreur */}
         {error && (
