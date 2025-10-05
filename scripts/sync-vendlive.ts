@@ -330,7 +330,7 @@ async function processSalesTable(sales: VendLiveSale[]): Promise<number> {
     ));
 
     const saleRow: Sale = {
-      vendlive_id: sale.id.toString
+      vendlive_id: sale.id.toString,
 	  account_id: parseInt(accountId),
       transaction_id: sale.id.toString(),
       machine_id: sale.machine.id,
