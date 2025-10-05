@@ -674,17 +674,19 @@ const handleLoadAll = async () => {
 // Filtrer les ventes selon le compte sélectionné
 const filteredSales = useMemo(() => {
   if (accountFilter === 'all') return sales;
-  return sales.filter(sale => sale.account_id === accountFilter);
+  return sales.filter(sale => Number(sale.account_id) === Number(accountFilter));
 }, [sales, accountFilter]);
 
 // Filtrer les machines selon le compte
 const filteredMachines = useMemo(() => {
   if (accountFilter === 'all') return machines;
   return machines.filter(machine => {
-    // Trouver les ventes de cette machine
-    const machineSales = sales.filter(s => s.machine_id === machine.id);
-    // Vérifier si au moins une vente correspond au compte
-    return machineSales.some(s => s.account_id === accountFilter);
+    const machineSales = sales.filter(
+      s => Number(s.machine_id) === Number(machine.id)
+    );
+    return machineSales.some(
+      s => Number(s.account_id) === Number(accountFilter)
+    );
   });
 }, [machines, sales, accountFilter]);
 

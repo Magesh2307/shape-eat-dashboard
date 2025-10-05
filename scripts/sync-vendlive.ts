@@ -300,7 +300,7 @@ async function processBatch(sales: VendLiveSale[], accountId: string): Promise<n
   console.log(`📊 Batch orders traité: ${orders.length} commandes à insérer`);
 
   if (orders.length > 0) {
-    await insertOrdersBatch(orders);
+    await insertOrdersBatch(orders, accountId);
   }
   
   return orders.length;
@@ -385,16 +385,22 @@ async function processSalesTable(sales: VendLiveSale[], accountId: string): Prom
   console.log(`📊 Batch sales traité: ${salesRows.length} commandes à insérer`);
 
   if (salesRows.length > 0) {
-    await insertSalesBatch(salesRows);
+    await insertSalesBatch(salesRows, accountId);
   }
 
   return salesRows.length;
 }
 
-async function insertOrdersBatch(orders: Order[]): Promise<void> {
+async function insertOrdersBatch(orders: Order[], accountId?: string): Promise<void> {
   if (orders.length === 0) return;
 
   console.log(`📤 Insertion orders: ${orders.length} lignes...`);
+
+  // ✅ Injecter le bon account_id pour chaque commande avant insertion
+  const enrichedOrders = orders.map(o => ({
+    ...o,
+    account_id: Number(accountId) || o.account_id || null,
+  }));
 
   const uniqueOrders = Object.values(
     orders.reduce((acc, order) => {
@@ -417,12 +423,12 @@ async function insertOrdersBatch(orders: Order[]): Promise<void> {
 
     try {
       // ✅ CORRECTION : Syntaxe corrigée
-      const { error } = await supabase
-        .from('orders')
-        .upsert(batch, { 
-          onConflict: 'vendlive_id',
-          ignoreDuplicates: false 
-        });
+		const { error } = await supabase
+		  .from('orders')
+		  .upsert(enrichedOrders, { 
+			onConflict: 'vendlive_id',
+			ignoreDuplicates: false 
+		  });
 
       if (error) {
         console.error(`❌ Erreur orders sous-batch ${i + 1}:`, error);
@@ -444,15 +450,21 @@ async function insertOrdersBatch(orders: Order[]): Promise<void> {
   console.log(`✅ Tous les orders sous-batchs insérés: ${uniqueOrders.length} lignes au total`);
 }
 
-async function insertSalesBatch(salesRows: Sale[]): Promise<void> {
+async function insertSalesBatch(salesRows: Sale[], accountId?: string): Promise<void> {
   if (salesRows.length === 0) return;
 
   console.log(`📤 Insertion sales: ${salesRows.length} commandes...`);
 
+  // ✅ Injecter le bon account_id à chaque ligne avant insertion
+  const enrichedSales = salesRows.map(s => ({
+    ...s,
+    account_id: Number(accountId) || s.account_id || null,
+  }));
+
   try {
     const { error } = await supabase
       .from('sales')
-      .upsert(salesRows, { 
+      .upsert(enrichedSales, { 
         onConflict: 'vendlive_id',
         ignoreDuplicates: false 
       });
@@ -462,7 +474,7 @@ async function insertSalesBatch(salesRows: Sale[]): Promise<void> {
       throw error;
     }
 
-    console.log(`✅ ${salesRows.length} commandes insérées dans sales avec succès`);
+    console.log(`✅ ${enrichedSales.length} commandes insérées dans sales avec succès`);
 
   } catch (err) {
     console.error(`❌ Erreur fatale insertion sales:`, err);
