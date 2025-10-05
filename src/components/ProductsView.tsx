@@ -248,14 +248,14 @@ const revenue = unitPrice * quantity;
     <div className="space-y-6">
       {/* En-tête */}
       <div>
-        <h2 className="text-xl font-light text-white mb-1">Top Produits</h2>
-        <p className="text-slate-400 text-sm">
+        <h2 className="text-lg lg:text-xl font-light text-white mb-1">Top Produits</h2>
+        <p className="text-slate-400 text-xs lg:text-sm">
           Analyse des produits les plus vendus par période et par venue
         </p>
       </div>
 
       {/* Filtres - Même structure que l'original */}
-      <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-6">
+      <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl lg:rounded-2xl border border-slate-700/50 p-4 lg:p-6">
         <div className="space-y-4">
           {/* Ligne 1: Filtres de date */}
           <div className="flex flex-wrap gap-3">
@@ -272,7 +272,7 @@ const revenue = unitPrice * quantity;
                   <button
                     key={filter.key}
                     onClick={() => setDateFilter(filter.key)}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    className={`px-2 lg:px-3 py-1.5 lg:py-2 rounded-lg text-xs lg:text-sm font-medium transition-colors ${
                       dateFilter === filter.key
                         ? 'bg-emerald-600 text-white'
                         : 'bg-slate-700/50 text-slate-300 hover:bg-slate-600/50'
@@ -309,7 +309,7 @@ const revenue = unitPrice * quantity;
                 placeholder="Nom ou catégorie..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 lg:px-4 py-2 text-sm lg:text-base bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
 
@@ -319,7 +319,7 @@ const revenue = unitPrice * quantity;
               <select
                 value={selectedVenue}
                 onChange={(e) => setSelectedVenue(e.target.value)}
-                className="w-full px-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 lg:px-4 py-2 text-sm lg:text-base bg-slate-700/50 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="all">Toutes les venues</option>
                 {allVenues.map(venue => (
@@ -334,7 +334,7 @@ const revenue = unitPrice * quantity;
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="w-full px-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 lg:px-4 py-2 text-sm lg:text-base bg-slate-700/50 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="all">Toutes les catégories</option>
                 {allCategories.map(category => (
@@ -349,7 +349,7 @@ const revenue = unitPrice * quantity;
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as 'quantity' | 'revenue')}
-                className="w-full px-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 lg:px-4 py-2 text-sm lg:text-base bg-slate-700/50 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="revenue">Chiffre d'affaires</option>
                 <option value="quantity">Quantité vendue</option>
@@ -395,16 +395,16 @@ const revenue = unitPrice * quantity;
 
       {/* Statistiques globales */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-6">
-          <h3 className="text-sm font-medium text-slate-400 mb-1">Produits affichés</h3>
-          <p className="text-2xl font-bold text-white">{productStats.length}</p>
+        <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl lg:rounded-2xl border border-slate-700/50 p-4 lg:p-6">
+          <h3 className="text-xs lg:text-sm font-medium text-slate-400 mb-1">Produits affichés</h3>
+          <p className="text-xl lg:text-2xl font-bold text-white">{productStats.length}</p>
         </div>
-        <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-6">
-          <h3 className="text-sm font-medium text-slate-400 mb-1">Quantité totale</h3>
+        <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl lg:rounded-2xl border border-slate-700/50 p-4 lg:p-6">
+          <h3 className="text-xs lg:text-sm font-medium text-slate-400 mb-1">Quantité totale</h3>
           <p className="text-2xl font-bold text-emerald-400">{totals.quantity.toLocaleString()}</p>
         </div>
-        <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-6">
-          <h3 className="text-sm font-medium text-slate-400 mb-1">CA total</h3>
+        <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl lg:rounded-2xl border border-slate-700/50 p-4 lg:p-6">
+          <h3 className="text-xs lg:text-sm font-medium text-slate-400 mb-1">CA total</h3>
           <p className="text-2xl font-bold text-blue-400">
             {totals.revenue.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
           </p>
@@ -413,17 +413,17 @@ const revenue = unitPrice * quantity;
 
       {/* Tableau des produits - Structure identique mais avec les bonnes données */}
       <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto -mx-4 lg:mx-0">
           <table className="min-w-full">
             <thead className="bg-slate-700/30">
               <tr>
-                <th className="px-6 py-4 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                <th className="px-3 lg:px-6 py-3 lg:py-4 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
                   Rang
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                <th className="px-3 lg:px-6 py-3 lg:py-4 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
                   Produit
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
+                <th className="px-3 lg:px-6 py-3 lg:py-4 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">
                   Catégorie
                 </th>
                 <th className="px-6 py-4 text-center text-xs font-medium text-slate-300 uppercase tracking-wider">
@@ -456,23 +456,23 @@ const revenue = unitPrice * quantity;
                   
                   return (
                     <tr key={product.productId} className="hover:bg-slate-700/30 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className={`text-lg font-bold ${rankColor}`}>
+                      <td className="px-3 lg:px-6 py-3 lg:py-4 whitespace-nowrap">
+                        <div className={`text-base lg:text-lg font-bold ${rankColor}`}>
                           #{index + 1}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-white">
+                      <td className="px-3 lg:px-6 py-3 lg:py-4 whitespace-nowrap">
+                        <div className="text-xs lg:text-sm font-medium text-white">
                           {product.productName}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 lg:px-6 py-3 lg:py-4 whitespace-nowrap">
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-600 text-slate-200">
                           {product.category}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <div className="text-sm font-medium text-white">
+                        <div className="text-xs lg:text-sm font-medium text-white">
                           {product.quantity.toLocaleString()}
                         </div>
                         <div className="text-xs text-slate-400">
@@ -480,7 +480,7 @@ const revenue = unitPrice * quantity;
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
-                        <div className="text-sm font-medium text-white">
+                        <div className="text-xs lg:text-sm font-medium text-white">
                           {product.totalRevenue.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
                         </div>
                         <div className="text-xs text-slate-400">
@@ -508,8 +508,8 @@ const revenue = unitPrice * quantity;
 
       {/* Graphique simple en barres - Structure identique */}
       {productStats.length > 0 && (
-        <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-6">
-          <h3 className="text-lg font-medium text-white mb-4">
+        <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl lg:rounded-2xl border border-slate-700/50 p-4 lg:p-6">
+          <h3 className="text-base lg:text-lg font-medium text-white mb-3 lg:mb-4">
             Visualisation Top 10 - {sortBy === 'revenue' ? 'Chiffre d\'affaires' : 'Quantités'}
           </h3>
           <div className="space-y-3">
@@ -520,7 +520,7 @@ const revenue = unitPrice * quantity;
               
               return (
                 <div key={product.productId} className="flex items-center gap-4">
-                  <div className="w-32 text-sm text-slate-300 truncate" title={product.productName}>
+                  <div className="w-24 lg:w-32 text-xs lg:text-sm text-slate-300 truncate" title={product.productName}>
                     {product.productName}
                   </div>
                   <div className="flex-1">
