@@ -175,16 +175,31 @@ const DashboardView = ({
   const avgBasket = displayStats.successfulOrders > 0 
     ? displayStats.totalRevenue / displayStats.successfulOrders 
     : 0;
+	
+	// Appliquer le filtre d'account (propagée depuis App.tsx)
+const filteredVenues = useMemo(() => {
+  if (!periodStats?.venues) return [];
+
+  // On suppose que chaque venue contient un champ account_id
+  if (apiStats?.currentAccountId) {
+    return periodStats.venues.filter(
+      (v: any) => v.account_id === apiStats.currentAccountId
+    );
+  }
+
+  // Si aucun compte sélectionné → on garde tout
+  return periodStats.venues;
+}, [periodStats, apiStats.currentAccountId]);
 
   // Top 5 des venues
-  const topVenues = displayStats.venues
-    .sort((a: any, b: any) => (b.total_revenue_ttc || 0) - (a.total_revenue_ttc || 0))
-    .slice(0, 5);
+ const topVenues = filteredVenues
+  .sort((a: any, b: any) => (b.total_revenue_ttc || 0) - (a.total_revenue_ttc || 0))
+  .slice(0, 5);
 
   // Bottom 5 des venues
-  const bottomVenues = displayStats.venues
-    .sort((a: any, b: any) => (a.total_revenue_ttc || 0) - (b.total_revenue_ttc || 0))
-    .slice(0, 5);
+const bottomVenues = filteredVenues
+  .sort((a: any, b: any) => (a.total_revenue_ttc || 0) - (b.total_revenue_ttc || 0))
+  .slice(0, 5);
 
   return (
     <div className="space-y-8">
