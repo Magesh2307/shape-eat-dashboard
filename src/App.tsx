@@ -15,27 +15,33 @@ class SecureApiService {
   }
 
   // 🔒 Méthode générique pour les appels sécurisés
-  private async apiCall(endpoint: string, options: RequestInit = {}) {
-    try {
-      const response = await fetch(`${this.backendUrl}${endpoint}`, {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
-      });
+private async apiCall(endpoint: string, options: RequestInit = {}) {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 secondes au lieu du défaut
+    
+    const response = await fetch(`${this.backendUrl}${endpoint}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `Erreur ${response.status}`);
-      }
+    clearTimeout(timeoutId);
 
-      return await response.json();
-    } catch (error) {
-      console.error(`Erreur API ${endpoint}:`, error);
-      throw error;
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Erreur ${response.status}`);
     }
+
+    return await response.json();
+  } catch (error) {
+    console.error(`Erreur API ${endpoint}:`, error);
+    throw error;
   }
+}
 
   // Récupérer les machines via le backend sécurisé
   async fetchMachines() {
