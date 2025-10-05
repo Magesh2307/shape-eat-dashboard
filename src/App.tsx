@@ -671,6 +671,23 @@ const handleLoadAll = async () => {
   }
 };
 
+// Filtrer les ventes selon le compte sélectionné
+const filteredSales = useMemo(() => {
+  if (accountFilter === 'all') return sales;
+  return sales.filter(sale => sale.account_id === accountFilter);
+}, [sales, accountFilter]);
+
+// Filtrer les machines selon le compte
+const filteredMachines = useMemo(() => {
+  if (accountFilter === 'all') return machines;
+  return machines.filter(machine => {
+    // Trouver les ventes de cette machine
+    const machineSales = sales.filter(s => s.machine_id === machine.id);
+    // Vérifier si au moins une vente correspond au compte
+    return machineSales.some(s => s.account_id === accountFilter);
+  });
+}, [machines, sales, accountFilter]);
+
 // useEffect principal - CORRIGÉ
 useEffect(() => {
   // Ne charger que si authentifié
@@ -943,28 +960,27 @@ if (isLoading && sales.length === 0) {
 
         {/* Contenu des vues */}
         <main className="p-8">
-          {activeView === 'dashboard' && (
-            <DashboardView 
-              salesData={sales} 
-              apiStats={apiStats}
-              machines={machines}
-              loadProgress={loadingProgress}
-              isLoading={isLoading}
-              onLoadAll={handleLoadAll}
-			  accountFilter={accountFilter}
-            />
-          )}
-          
-          {activeView === 'sales' && (
-	  <SalesView sales={sales} supabase={supabase} />
-	)}
-          
-          {activeView === 'machines' && (
-            <MachinesView 
-              machines={machines} 
-              sales={sales}
-            />
-          )}
+		{activeView === 'dashboard' && (
+		  <DashboardView 
+			salesData={filteredSales}  // ← Données filtrées
+			apiStats={apiStats}
+			machines={filteredMachines}  // ← Machines filtrées
+			loadProgress={loadingProgress}
+			isLoading={isLoading}
+			onLoadAll={handleLoadAll}
+		  />
+		)}
+
+		{activeView === 'sales' && (
+		  <SalesView sales={filteredSales} supabase={supabase} />
+		)}
+
+		{activeView === 'machines' && (
+		  <MachinesView 
+			machines={filteredMachines}
+			sales={filteredSales}
+		  />
+)}
         </main>
       </div>
     </div>
