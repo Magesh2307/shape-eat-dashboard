@@ -15,32 +15,39 @@ class SecureApiService {
   }
 
   // 🔒 Méthode générique pour les appels sécurisés
-private async apiCall(endpoint: string, options: RequestInit = {}) {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 secondes au lieu du défaut
-    
-    const response = await fetch(`${this.backendUrl}${endpoint}`, {
-      ...options,
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-    });
+private async apiCall(endpoint: string, options: RequestInit = {}, retries = 2) {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 90000);
+      
+      const response = await fetch(`${this.backendUrl}${endpoint}`, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+      });
 
-    clearTimeout(timeoutId);
+      clearTimeout(timeoutId);
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `Erreur ${response.status}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Erreur ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      if (i === retries) {
+        console.error(`Erreur API ${endpoint} après ${retries + 1} tentatives:`, error);
+        throw error;
+      }
+      console.log(`Tentative ${i + 1} échouée, retry dans 3s...`);
+      await new Promise(r => setTimeout(r, 3000));
     }
-
-    return await response.json();
-  } catch (error) {
-    console.error(`Erreur API ${endpoint}:`, error);
-    throw error;
   }
+}
 }
 
   // Récupérer les machines via le backend sécurisé
