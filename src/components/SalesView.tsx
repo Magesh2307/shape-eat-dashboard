@@ -985,19 +985,19 @@ const getFormattedPeriod = () => {
       <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-light text-white mb-1">Module Ventes</h2>
-            <p className="text-sm text-slate-400">Analyse complète de vos ventes et produits</p>
+            <h2 className="text-xl lg:text-2xl font-light text-white mb-1">Module Ventes</h2>
+            <p className="text-xs lg:text-sm text-slate-400">Analyse complète de vos ventes et produits</p>
           </div>
           
           {/* Onglets */}
-          <div className="flex items-center bg-slate-700/30 rounded-xl p-1">
+          <div className="flex items-center bg-slate-700/30 rounded-lg lg:rounded-xl p-1">
             <button
               onClick={() => {
                 setActiveTab('transactions');
                 setProductSearchQuery('');
                 setDebouncedProductSearchQuery('');
               }}
-              className={`px-6 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+              className={`px-3 lg:px-6 py-2 rounded-lg text-xs lg:text-sm font-medium transition-all duration-200 ${
                 activeTab === 'transactions'
                   ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg'
                   : 'text-slate-400 hover:text-white'
@@ -1047,7 +1047,7 @@ const getFormattedPeriod = () => {
                   placeholder={activeTab === 'transactions' ? "Rechercher par ID, venue, montant..." : "Rechercher par nom de produit..."}
                   value={activeTab === 'transactions' ? searchQuery : productSearchQuery}
                   onChange={(e) => activeTab === 'transactions' ? setSearchQuery(e.target.value) : setProductSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200"
+                  className"w-full pl-10 pr-4 py-2 lg:py-3 text-sm lg:text-base bg-slate-700/50 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200"
                 />
               </div>
             </div>
@@ -1061,7 +1061,7 @@ const getFormattedPeriod = () => {
                   setShowDatePicker(true);
                 }
               }}
-              className="px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200"
+              className="px-3 lg:px-4 py-2 lg:py-3 text-sm lg:text-base bg-slate-700/50 border border-slate-600 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200"
             >
               <option value="all">Toutes les dates</option>
               <option value="today">Aujourd'hui</option>
@@ -1073,7 +1073,7 @@ const getFormattedPeriod = () => {
           </div>
 
           {/* Deuxième ligne : Filtres avancés */}
-		<div className="grid grid-cols-2 gap-4">
+		<div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
 		  {/* Sélecteur de venues */}
 		<div className="relative">
 		  <button
@@ -1082,7 +1082,7 @@ const getFormattedPeriod = () => {
 			  setShowVenueDropdown(!showVenueDropdown);
 			  setShowCategoryDropdown(false);
 			}}
-			className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-xl text-white text-left flex items-center justify-between hover:bg-slate-700/70 transition-all duration-200"
+			className="w-full px-3 lg:px-4 py-2 lg:py-3 text-sm lg:text-base bg-slate-700/50 border border-slate-600 rounded-xl text-white text-left flex items-center justify-between hover:bg-slate-700/70 transition-all duration-200"
 		  >
 			<span className="truncate">
 			  {selectedVenue.length === 0 
@@ -1233,7 +1233,7 @@ const getFormattedPeriod = () => {
           {activeTab === 'products' && (
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2">
-                <span className="text-sm text-slate-400">Trier par :</span>
+                <span className="text-xs lg:text-sm text-slate-400">Trier par :</span>
                 <select
                   value={productSortBy}
                   onChange={(e) => setProductSortBy(e.target.value as 'revenue' | 'quantity')}
@@ -1245,7 +1245,7 @@ const getFormattedPeriod = () => {
               </div>
               
               <div className="flex items-center space-x-2">
-                <span className="text-sm text-slate-400">Afficher top :</span>
+                <span className="text-xs lg:text-sm text-slate-400">Afficher top :</span>
                 <select
                   value={topProductsLimit}
                   onChange={(e) => setTopProductsLimit(parseInt(e.target.value))}
@@ -1309,17 +1309,17 @@ const getFormattedPeriod = () => {
 {activeTab === 'transactions' ? (
   <>
     {/* Stats */}
-    <div className="grid grid-cols-3 gap-6">
-      <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6">
+      <div className="bg-slate-800/50 backdrop-blur-xl rounded-xl lg:rounded-2xl p-4 lg:p-6 border border-slate-700/50">
         <div className="flex items-center justify-between mb-4">
-          <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 lg:w-12 lg:h-12 bg-blue-500/20 rounded-lg lg:rounded-xl flex items-center justify-center">
             <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
           </div>
         </div>
-        <p className="text-3xl font-light text-white mb-1">{stats.totalSales}</p>
-        <p className="text-sm text-slate-400">Transactions totales</p>
+        <p className="text-2xl lg:text-3xl font-light text-white mb-1">{stats.totalSales}</p>
+        <p className="text-xs lg:text-sm text-slate-400">Transactions totales</p>
       </div>
 
       <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
@@ -1330,8 +1330,8 @@ const getFormattedPeriod = () => {
             </svg>
           </div>
         </div>
-        <p className="text-3xl font-light text-white mb-1">{stats.successfulSales}</p>
-        <p className="text-sm text-slate-400">Ventes réussies</p>
+        <p className="text-2xl lg:text-3xl font-light text-white mb-1">{stats.successfulSales}</p>
+        <p className="text-xs lg:text-sm text-slate-400">Ventes réussies</p>
       </div>
 
       <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
@@ -1382,7 +1382,7 @@ const getFormattedPeriod = () => {
         {/* TVA avec meilleur design */}
         <div className="mt-4 pt-4 border-t border-slate-700/50">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-slate-400">TVA</span>
+            <span className="text-xs lg:text-sm text-slate-400">TVA</span>
             <span className="text-sm font-medium text-purple-300">
               {stats.totalTVA.toFixed(2)} €
             </span>
@@ -1393,7 +1393,7 @@ const getFormattedPeriod = () => {
 
           {/* Tableau des transactions */}
           <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-700/50 overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto -mx-4 lg:mx-0">
               <table className="w-full">
                 <thead className="bg-slate-700/30 border-b border-slate-700/50">
   <tr>
@@ -1407,7 +1407,7 @@ const getFormattedPeriod = () => {
         )}
       </button>
     </th>
-    <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">ID Transaction</th>
+    <th className="px-3 lg:px-6 py-3 lg:py-4 text-xs font-medium text-slate-400 uppercase tracking-wider">ID Transaction</th>
     <th className="px-6 py-4 text-left">
       <button onClick={() => handleSort('venue')} className="flex items-center space-x-1 text-xs font-medium text-slate-400 uppercase tracking-wider hover:text-white transition-colors duration-200">
         <span>Venue</span>
@@ -1418,8 +1418,8 @@ const getFormattedPeriod = () => {
         )}
       </button>
     </th>
-    <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Catégorie</th>
-    <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Produit</th>
+    <th className="px-3 lg:px-6 py-3 lg:py-4 text-xs font-medium text-slate-400 uppercase tracking-wider">Catégorie</th>
+    <th className="px-3 lg:px-6 py-3 lg:py-4 text-xs font-medium text-slate-400 uppercase tracking-wider">Produit</th>
     <th className="px-6 py-4 text-right">
       <button onClick={() => handleSort('amount')} className="flex items-center space-x-1 text-xs font-medium text-slate-400 uppercase tracking-wider hover:text-white transition-colors duration-200 ml-auto">
         <span>Montant {showTTC ? 'TTC' : 'HT'}</span>
@@ -1440,9 +1440,9 @@ const getFormattedPeriod = () => {
         )}
       </button>
     </th>
-    <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Email Client</th>
+    <th className="px-3 lg:px-6 py-3 lg:py-4 text-xs font-medium text-slate-400 uppercase tracking-wider">Email Client</th>
     <th className="px-6 py-4 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">Réduction</th>
-    <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Code Promo</th>
+    <th className="px-3 lg:px-6 py-3 lg:py-4 text-xs font-medium text-slate-400 uppercase tracking-wider">Code Promo</th>
     <th className="px-6 py-4 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Facture</th>
   </tr>
 </thead>
@@ -1491,7 +1491,7 @@ const promoCode =
   return (
     <tr key={sale.id} className="hover:bg-slate-700/20 transition-colors duration-150">
       {/* Date */}
-		<td className="px-6 py-4 whitespace-nowrap text-sm text-white">
+		<td className="px-3 lg:px-6 py-3 lg:py-4 text-xs lg:text-sm text-white">
 		  {sale.created_at ? new Date(sale.created_at).toLocaleDateString('fr-FR', {
 			day: '2-digit',
 			month: '2-digit',
@@ -1658,24 +1658,24 @@ const promoCode =
             {totalPages > 1 && (
               <div className="px-6 py-4 border-t border-slate-700/50">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm text-slate-400">
+                  <p className="text-xs lg:text-sm text-slate-400">
                     Affichage de {startIndex + 1} à {Math.min(endIndex, filteredAndSortedSales.length)} sur {filteredAndSortedSales.length} résultats
                   </p>
                   <div className="flex items-center space-x-2">
                     <button
                       onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                       disabled={currentPage === 1}
-                      className="px-3 py-1 bg-slate-700/50 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors duration-200"
+                      className="px-2 lg:px-3 py-1 text-xs lg:text-sm bg-slate-700/50 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors duration-200"
                     >
                       Précédent
                     </button>
-                    <span className="text-sm text-slate-400">
+                    <span className="text-xs lg:text-sm text-slate-400">
                       Page {currentPage} sur {totalPages}
                     </span>
                     <button
                       onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                       disabled={currentPage === totalPages}
-                      className="px-3 py-1 bg-slate-700/50 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors duration-200"
+                      className="px-2 lg:px-3 py-1 text-xs lg:text-sm bg-slate-700/50 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors duration-200"
                     >
                       Suivant
                     </button>
@@ -1697,8 +1697,8 @@ const promoCode =
                   </svg>
                 </div>
               </div>
-              <p className="text-3xl font-light text-white mb-1">{productStats.totalProducts}</p>
-              <p className="text-sm text-slate-400">Produits différents</p>
+              <p className="text-2xl lg:text-3xl font-light text-white mb-1">{productStats.totalProducts}</p>
+              <p className="text-xs lg:text-sm text-slate-400">Produits différents</p>
             </div>
 
             <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
@@ -1709,8 +1709,8 @@ const promoCode =
                   </svg>
                 </div>
               </div>
-              <p className="text-3xl font-light text-white mb-1">{productStats.totalQuantity.toLocaleString()}</p>
-              <p className="text-sm text-slate-400">Quantité totale vendue</p>
+              <p className="text-2xl lg:text-3xl font-light text-white mb-1">{productStats.totalQuantity.toLocaleString()}</p>
+              <p className="text-xs lg:text-sm text-slate-400">Quantité totale vendue</p>
             </div>
 
             <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50">
@@ -1721,8 +1721,8 @@ const promoCode =
                   </svg>
                 </div>
               </div>
-              <p className="text-3xl font-light text-white mb-1">{productStats.totalRevenue.toFixed(2)} €</p>
-              <p className="text-sm text-slate-400">Chiffre d'affaires total</p>
+              <p className="text-2xl lg:text-3xl font-light text-white mb-1">{productStats.totalRevenue.toFixed(2)} €</p>
+              <p className="text-xs lg:text-sm text-slate-400">Chiffre d'affaires total</p>
             </div>
           </div>
 
@@ -1737,7 +1737,7 @@ const promoCode =
                   <div key={index} className="relative">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm text-white truncate max-w-xs">{item.name}</span>
-                      <span className="text-sm text-slate-400">
+                      <span className="text-xs lg:text-sm text-slate-400">
                         {productSortBy === 'revenue' ? `${item.value.toFixed(2)} €` : item.value}
                       </span>
                     </div>
@@ -1761,13 +1761,13 @@ const promoCode =
 
 {/* Tableau des produits */}
 <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-700/50 overflow-hidden">
-  <div className="overflow-x-auto">
+  <div className="overflow-x-auto -mx-4 lg:mx-0">
     <table className="w-full">
       <thead className="bg-slate-700/30 border-b border-slate-700/50">
         <tr>
           <th className="px-6 py-4 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Rang</th>
-          <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Produit</th>
-          <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Catégorie</th>
+          <th className="px-3 lg:px-6 py-3 lg:py-4 text-xs font-medium text-slate-400 uppercase tracking-wider">Produit</th>
+          <th className="px-3 lg:px-6 py-3 lg:py-4 text-xs font-medium text-slate-400 uppercase tracking-wider">Catégorie</th>
           <th className="px-6 py-4 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">Quantité vendue</th>
           <th className="px-6 py-4 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">CA Total</th>
           <th className="px-6 py-4 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">Prix moyen</th>
