@@ -168,6 +168,7 @@ function mapStatus(vendStatus: string): string {
 }
 
 async function fetchVendLiveData(
+  accountId: string,
   startDate: string,
   endDate: string,
   page: number = 1
@@ -210,7 +211,7 @@ function generateUniqueId(sale: VendLiveSale, productSale: ProductSale, index: n
   return uniqueId;
 }
 
-async function processBatch(sales: VendLiveSale[]): Promise<number> {
+async function processBatch(sales: VendLiveSale[], accountId: string): Promise<number> {
   const orders: Order[] = [];
   let globalCounter = Date.now();
   let skippedUnknown = 0;
@@ -293,7 +294,7 @@ async function processBatch(sales: VendLiveSale[]): Promise<number> {
   return orders.length;
 }
 
-async function processSalesTable(sales: VendLiveSale[]): Promise<number> {
+async function processSalesTable(sales: VendLiveSale[], accountId: string): Promise<number> {
   const salesRows: Sale[] = [];
   
   for (const sale of sales) {
@@ -331,7 +332,7 @@ async function processSalesTable(sales: VendLiveSale[]): Promise<number> {
     ));
 
     const saleRow: Sale = {
-      vendlive_id: sale.id.toString,
+      vendlive_id: sale.id.toString(),
 	  account_id: parseInt(accountId),
       transaction_id: sale.id.toString(),
       machine_id: sale.machine.id,
@@ -511,7 +512,7 @@ async function syncVendlive(accountId: string): Promise<void> {
     while (maxPages === 0 || page <= maxPages) {
       console.log(`\n📄 === PAGE ${page} ===`);
       
-      const data = await fetchVendLiveData(startDate, endDate, page);
+      const data = await fetchVendLiveData(accountId, startDate, endDate, page);
       
       console.log(`📊 Page ${page}: ${data.results.length} ventes récupérées`);
       
@@ -520,8 +521,8 @@ async function syncVendlive(accountId: string): Promise<void> {
         break;
       }
 
-      const ordersProcessed = await processBatch(data.results);
-      const salesProcessed = await processSalesTable(data.results);
+	const ordersProcessed = await processBatch(data.results, accountId);
+	const salesProcessed = await processSalesTable(data.results, accountId);
       
       totalSales += data.results.length;
       totalOrders += ordersProcessed;
