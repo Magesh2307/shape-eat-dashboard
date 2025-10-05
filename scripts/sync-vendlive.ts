@@ -19,7 +19,8 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 console.log('🔍 SUPABASE_URL:', supabaseUrl ? 'OK' : 'MANQUANT');
 console.log('🔍 SUPABASE_SERVICE_ROLE_KEY:', supabaseKey ? 'OK' : 'MANQUANT');
 console.log('🔍 VENDLIVE_TOKEN:', VENDLIVE_TOKEN ? 'OK' : 'MANQUANT');
-console.log('🔍 VENDLIVE_ACCOUNT_ID:', VENDLIVE_ACCOUNT_ID);
+console.log('🔍 VENDLIVE_ACCOUNT_IDS:', VENDLIVE_ACCOUNT_IDS);
+
 
 if (!supabaseUrl || !supabaseKey) {
   console.error('❌ Variables Supabase manquantes dans .env.local !');
