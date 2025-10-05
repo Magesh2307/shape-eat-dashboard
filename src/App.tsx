@@ -44,38 +44,40 @@ private async apiCall(endpoint: string, options: RequestInit = {}) {
 }
 
     // Récupérer les machines directement depuis Supabase
-  async fetchMachines() {
-    console.log('🚀 Connexion directe à Supabase pour récupérer les machines...');
-
-    const { data, error } = await supabase.from('machines').select('*');
-    if (error) {
-      console.error('❌ Erreur Supabase (machines):', error);
-      throw error;
-    }
-
-    console.log(`✅ ${data?.length || 0} machines récupérées depuis Supabase.`);
-    return data || [];
+async fetchMachines() {
+  console.log('📡 Récupération machines depuis Supabase...');
+  const { data, error } = await supabase.from('machines').select('*');
+  if (error) {
+    console.error('Erreur Supabase fetchMachines:', error.message);
+    return [];
   }
+  console.log(`✅ ${data?.length || 0} machines récupérées`);
+  return data || [];
+}
 
   // Récupérer les ventes directement depuis Supabase
-  async fetchSales(filters?: { startDate?: string; endDate?: string; limit?: number }) {
-    console.log('🚀 Connexion directe à Supabase pour récupérer les ventes...');
+async fetchSales(filters?: { startDate?: string; endDate?: string; limit?: number }) {
+  console.log('📡 Récupération ventes depuis Supabase...');
 
-    let query = supabase.from('sales').select('*');
+  let query = supabase.from('sales').select('*');
 
-    if (filters?.startDate) query = query.gte('created_at', filters.startDate);
-    if (filters?.endDate) query = query.lte('created_at', filters.endDate);
-    if (filters?.limit) query = query.limit(filters.limit);
-
-    const { data, error } = await query;
-    if (error) {
-      console.error('❌ Erreur Supabase (sales):', error);
-      throw error;
-    }
-
-    console.log(`✅ ${data?.length || 0} ventes récupérées depuis Supabase.`);
-    return data || [];
+  if (filters?.startDate && filters?.endDate) {
+    query = query.gte('created_at', filters.startDate).lte('created_at', filters.endDate);
   }
+
+  if (filters?.limit) {
+    query = query.limit(filters.limit);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.error('Erreur Supabase fetchSales:', error.message);
+    return [];
+  }
+
+  console.log(`✅ ${data?.length || 0} ventes récupérées`);
+  return data || [];
+}
 
   // Vérifier la santé (facultatif : on peut le supprimer)
   async checkHealth() {
