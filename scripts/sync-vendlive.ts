@@ -11,6 +11,15 @@ const VENDLIVE_TOKEN = process.env.VENDLIVE_TOKEN;
 const VENDLIVE_ACCOUNT_IDS = (process.env.VENDLIVE_ACCOUNT_IDS)
   .split(',')
   .map(id => id.trim());
+  
+  const ACCOUNT_NAMES: Record<string, string> = {
+  '295': 'Shape Eat',
+  '337': 'OA Bobigny',
+  '360': 'OA Clichy', 
+  '340': 'OA Flandres',
+  '339': 'OA Roissy-en-Brie/St-Brice',
+  '338': 'OA Pré-St-Gervais'
+};
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -100,6 +109,7 @@ interface Order {
   vendlive_id: string;
   sale_id: number; // ✅ Ajouté
   account_id: number;
+  account_name: string;
   product_sale_id: number; // ✅ Ajouté
   history_id: number | null; // ✅ Ajouté
   machine_id: number;
@@ -129,6 +139,7 @@ interface Order {
 interface Sale {
   vendlive_id: string;
   account_id: number;
+  account_name: string;
   transaction_id: string;
   machine_id: number;
   machine_name: string;
@@ -251,6 +262,7 @@ async function processBatch(sales: VendLiveSale[], accountId: string): Promise<n
         vendlive_id: uniqueId,
         sale_id: sale.id,
 		account_id: parseInt(accountId),
+		 account_name: ACCOUNT_NAMES[accountId],
         product_sale_id: productSale.id,
         history_id: sale.history?.id || null,
         machine_id: sale.machine?.id || null,
@@ -334,6 +346,7 @@ async function processSalesTable(sales: VendLiveSale[], accountId: string): Prom
     const saleRow: Sale = {
       vendlive_id: sale.id.toString(),
 	  account_id: parseInt(accountId),
+	  account_name: ACCOUNT_NAMES[accountId],
       transaction_id: sale.id.toString(),
       machine_id: sale.machine.id,
       machine_name: sale.machine.friendlyName,
@@ -457,13 +470,13 @@ async function insertSalesBatch(salesRows: Sale[]): Promise<void> {
   }
 }
 
-async function clearOldData(): Promise<void> {
-  console.log('🗑️ Suppression des anciennes données...');
+async function clearOldData(accountId: string): Promise<void> {
+  console.log(`🗑️ Suppression des anciennes données pour le compte ${accountId}...`);
   
   const { error: ordersError } = await supabase
     .from('orders')
     .delete()
-    .neq('vendlive_id', '');
+    .eq('account_id', parseInt(accountId));
 
   if (ordersError) {
     console.error('❌ Erreur lors de la suppression orders:', ordersError);
@@ -473,14 +486,14 @@ async function clearOldData(): Promise<void> {
   const { error: salesError } = await supabase
     .from('sales')
     .delete()
-    .neq('vendlive_id', '');
+    .eq('account_id', parseInt(accountId));
 
   if (salesError) {
     console.error('❌ Erreur lors de la suppression sales:', salesError);
     throw salesError;
   }
 
-  console.log('✅ Anciennes données supprimées (orders + sales)');
+  console.log(`✅ Anciennes données supprimées pour le compte ${accountId}`);
 }
 
 async function syncVendlive(accountId: string): Promise<void> {
@@ -499,9 +512,9 @@ async function syncVendlive(accountId: string): Promise<void> {
   console.log(`📅 Période: ${startDate} → ${endDate}`);
   console.log(`📄 Pages max: ${maxPages === 0 ? 'ILLIMITÉES' : maxPages}`);
 
-  if (syncMode === 'full') {
-    await clearOldData();
-  }
+if (syncMode === 'full') {
+  await clearOldData(accountId);
+}
 
   let page = 1;
   let totalSales = 0;

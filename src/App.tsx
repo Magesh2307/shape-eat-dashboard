@@ -843,12 +843,12 @@ if (isLoading && sales.length === 0) {
         className="px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
       >
         <option value="all">Tous les comptes</option>
-        <option value="295">Compte 295 (Principal)</option>
-        <option value="337">Compte 337</option>
-        <option value="360">Compte 360</option>
-        <option value="340">Compte 340</option>
-        <option value="339">Compte 339</option>
-        <option value="338">Compte 338</option>
+        <option value="295">Shape Eat</option>
+        <option value="337">OA Bobigny</option>
+        <option value="360">OA Clichy</option>
+        <option value="340">OA Flandres</option>
+        <option value="339">OA Roissy-en-Brie/St-Brice</option>
+        <option value="338">OA Pré-St-Gervais</option>
       </select>
     </div>
   </div>
