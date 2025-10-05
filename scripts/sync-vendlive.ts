@@ -98,6 +98,7 @@ interface ProductSale {
 interface Order {
   vendlive_id: string;
   sale_id: number; // ✅ Ajouté
+  account_id: number;
   product_sale_id: number; // ✅ Ajouté
   history_id: number | null; // ✅ Ajouté
   machine_id: number;
@@ -126,6 +127,7 @@ interface Order {
 
 interface Sale {
   vendlive_id: string;
+  account_id: number;
   transaction_id: string;
   machine_id: number;
   machine_name: string;
