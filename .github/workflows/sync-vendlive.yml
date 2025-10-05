@@ -35,7 +35,7 @@ jobs:
           VENDLIVE_API_URL: https://vendlive.com/api/2.0/order-sales/
           VENDLIVE_ACCOUNT_IDS: ${{ secrets.VENDLIVE_ACCOUNT_IDS }}  # ← Changé
           VENDLIVE_TOKEN: ${{ secrets.VENDLIVE_TOKEN }}
-          SYNC_MODE: full
+          SYNC_MODE: incremental
           SYNC_START_DATE: "2024-01-01"
           SYNC_END_DATE: ${{ steps.tomorrow.outputs.value }}
           MAX_PAGES: "0"
