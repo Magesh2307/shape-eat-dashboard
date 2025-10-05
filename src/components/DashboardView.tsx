@@ -191,9 +191,8 @@ const DashboardView = ({
       {/* Titre clean sans période */}
 <div className="flex items-center justify-between">
   <div>
-    <h2 className="text-3xl font-light text-white">Analytics</h2>
-    <p className="text-slate-400 mt-1">
-      Vue d'ensemble de votre activité Shape Eat
+    <h2 className="text-2xl lg:text-3xl font-light text-white">Analytics</h2>
+	<p className="text-sm lg:text-base text-slate-400 mt-1">      Vue d'ensemble de votre activité Shape Eat
     </p>
   </div>
 
@@ -201,7 +200,7 @@ const DashboardView = ({
 	  <button
 		onClick={onLoadAll}
 		disabled={isLoading}
-		className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 shadow-lg disabled:opacity-50"
+		className="flex items-center space-x-2 px-4 lg:px-6 py-2 lg:py-3 text-sm lg:text-base bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 shadow-lg disabled:opacity-50"
 	  >
 		<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 		  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -211,11 +210,11 @@ const DashboardView = ({
 	</div>
 
       {/* FILTRES DE PÉRIODE AU-DESSUS DES KPI */}
-     <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-6">
+     <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl lg:rounded-2xl border border-slate-700/50 p-4 lg:p-6">
 	  <div className="flex flex-col space-y-4">
 		<div>
 		  <div className="flex items-center gap-4 mb-2">
-			<h3 className="text-lg font-medium text-white">
+			<h3 className="text-base lg:text-lg font-medium text-white">
 			  Période d'analyse
 			</h3>
 			{/* Badge de période */}
@@ -262,10 +261,10 @@ const DashboardView = ({
 			  
 			  return displayText && (
 				<div className="flex items-center gap-2 px-3 py-1 bg-slate-700/30 rounded-lg">
-				  <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				  <svg className="w-3 h-3 lg:w-4 lg:h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
 				  </svg>
-				  <span className="text-sm text-emerald-300">
+				  <span className="text-xs lg:text-sm text-emerald-300">
 					{displayText}
 				  </span>
 				</div>
@@ -290,7 +289,7 @@ const DashboardView = ({
 			  key={filter.key}
 			  onClick={() => setDateFilter(filter.key)}
 			  disabled={loadingPeriod}
-			  className={`px-6 py-3 rounded-xl text-sm font-medium transition-all duration-200 disabled:opacity-50 ${
+			  className={`px-3 lg:px-6 py-2 lg:py-3 rounded-lg lg:rounded-xl text-xs lg:text-sm font-medium transition-all duration-200 disabled:opacity-50 ${
 				dateFilter === filter.key
 				  ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg transform scale-105'
 				  : 'bg-slate-700/50 text-slate-300 hover:bg-slate-600/50 hover:text-white hover:scale-105'
@@ -336,16 +335,16 @@ const DashboardView = ({
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl p-6 text-white shadow-2xl">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl lg:rounded-2xl p-4 lg:p-6 text-white shadow-2xl">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-white/20 rounded-lg lg:rounded-xl flex items-center justify-center">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
               </svg>
             </div>
           </div>
-          <p className="text-emerald-100 text-sm font-medium mb-1">CHIFFRE D'AFFAIRES TTC</p>
-          <p className="text-3xl font-light">
+          <p className="text-emerald-100 text-xs lg:text-sm font-medium mb-1">CHIFFRE D'AFFAIRES TTC</p>
+          <p className="text-xl lg:text-3xl font-light">
             {displayStats.totalRevenue.toLocaleString('fr-FR', { 
               minimumFractionDigits: 2, 
               maximumFractionDigits: 2 
@@ -355,42 +354,42 @@ const DashboardView = ({
 
         <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-2xl">
           <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-white/20 rounded-lg lg:rounded-xl flex items-center justify-center">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
             </div>
           </div>
           <p className="text-blue-100 text-sm font-medium mb-1">VENTES RÉUSSIES</p>
-          <p className="text-3xl font-light">
+          <p className="text-xl lg:text-3xl font-light">
             {displayStats.successfulOrders.toLocaleString()}
           </p>
         </div>
 
         <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-6 text-white shadow-2xl">
           <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-white/20 rounded-lg lg:rounded-xl flex items-center justify-center">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
           </div>
           <p className="text-purple-100 text-sm font-medium mb-1">VENUES ACTIVES</p>
-          <p className="text-3xl font-light">
+          <p className="text-xl lg:text-3xl font-light">
             {displayStats.activeVenues}
           </p>
         </div>
 
         <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-6 text-white shadow-2xl">
           <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-white/20 rounded-lg lg:rounded-xl flex items-center justify-center">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
               </svg>
             </div>
           </div>
           <p className="text-orange-100 text-sm font-medium mb-1">PANIER MOYEN</p>
-          <p className="text-3xl font-light">
+          <p className="text-xl lg:text-3xl font-light">
             {avgBasket.toLocaleString('fr-FR', { 
               minimumFractionDigits: 2, 
               maximumFractionDigits: 2 
@@ -403,8 +402,8 @@ const DashboardView = ({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Top 5 */}
         <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 overflow-hidden">
-          <div className="px-8 py-6 border-b border-slate-700/50">
-            <h3 className="text-lg font-medium text-white mb-2">
+          <div className="px-4 lg:px-8 py-4 lg:py-6 border-b border-slate-700/50">
+            <h3 className="text-base lg:text-lg font-medium text-white mb-2">
               🏆 Top 5 des venues • {getFilterLabel()}
             </h3>
             <p className="text-slate-400 text-sm">
@@ -412,11 +411,11 @@ const DashboardView = ({
             </p>
           </div>
           
-          <div className="p-6">
+          <div className="p-4 lg:p-6">
             {topVenues.length > 0 ? (
               <div className="space-y-4">
                 {topVenues.map((venue: any, index: number) => (
-                  <div key={venue.venue_id || index} className="flex items-center justify-between p-4 bg-slate-700/30 rounded-xl hover:bg-slate-700/50 transition-colors">
+                  <div key={venue.venue_id || index} className="flex items-center justify-between p-3 lg:p-4 bg-slate-700/30 rounded-lg lg:rounded-xl hover:bg-slate-700/50 transition-colors">
                     <div className="flex items-center space-x-4">
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-bold ${
                         index === 0 ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' :
@@ -427,8 +426,8 @@ const DashboardView = ({
                         {index + 1}
                       </div>
                       <div>
-                        <h4 className="font-medium text-white">{venue.venue_name || `Venue ${venue.venue_id}`}</h4>
-                        <div className="flex items-center space-x-4 text-sm text-slate-400">
+                        <h4 className="text-sm lg:text-base font-medium text-white">{venue.venue_name || `Venue ${venue.venue_id}`}</h4>
+                        <div className="flex items-center space-x-2 lg:space-x-4 text-xs lg:text-sm text-slate-400">
                           <span>{venue.successful_orders || 0} commandes</span>
                           <span>•</span>
                           <span>
@@ -446,7 +445,7 @@ const DashboardView = ({
                     </div>
                     
                     <div className="text-right">
-                      <div className="text-lg font-semibold text-white">
+                      <div className="text-sm lg:text-lg font-semibold text-white">
                         {(venue.total_revenue_ttc || 0).toLocaleString('fr-FR', { 
                           minimumFractionDigits: 2, 
                           maximumFractionDigits: 2 
@@ -474,7 +473,7 @@ const DashboardView = ({
         {/* Bottom 5 */}
         <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 overflow-hidden">
           <div className="px-8 py-6 border-b border-slate-700/50">
-            <h3 className="text-lg font-medium text-white mb-2">
+            <h3 className="text-base lg:text-lg font-medium text-white mb-2">
               📉 Bottom 5 des venues • {getFilterLabel()}
             </h3>
             <p className="text-slate-400 text-sm">
@@ -482,18 +481,18 @@ const DashboardView = ({
             </p>
           </div>
           
-          <div className="p-6">
+          <div className="p-4 lg:p-6">
             {bottomVenues.length > 0 ? (
               <div className="space-y-4">
                 {bottomVenues.map((venue: any, index: number) => (
-                  <div key={venue.venue_id || index} className="flex items-center justify-between p-4 bg-slate-700/30 rounded-xl hover:bg-slate-700/50 transition-colors">
+                  <div key={venue.venue_id || index} className="flex items-center justify-between p-3 lg:p-4 bg-slate-700/30 rounded-lg lg:rounded-xl hover:bg-slate-700/50 transition-colors">
                     <div className="flex items-center space-x-4">
                       <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-bold bg-gradient-to-r from-red-500 to-red-600">
                         {index + 1}
                       </div>
                       <div>
-                        <h4 className="font-medium text-white">{venue.venue_name || `Venue ${venue.venue_id}`}</h4>
-                        <div className="flex items-center space-x-4 text-sm text-slate-400">
+                        <h4 className="text-sm lg:text-base font-medium text-white">{venue.venue_name || `Venue ${venue.venue_id}`}</h4>
+                        <div className="flex items-center space-x-2 lg:space-x-4 text-xs lg:text-sm text-slate-400">
                           <span>{venue.successful_orders || 0} commandes</span>
                           <span>•</span>
                           <span>
@@ -511,7 +510,7 @@ const DashboardView = ({
                     </div>
                     
                     <div className="text-right">
-                      <div className="text-lg font-semibold text-white">
+                      <div className="text-sm lg:text-lg font-semibold text-white">
                         {(venue.total_revenue_ttc || 0).toLocaleString('fr-FR', { 
                           minimumFractionDigits: 2, 
                           maximumFractionDigits: 2 
