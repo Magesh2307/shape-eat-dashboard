@@ -152,7 +152,6 @@ const displayStats = useMemo(() => {
     };
   }
 
-  // TOUJOURS utiliser filteredVenues (déjà filtré par compte)
   if (filteredVenues.length > 0) {
     const totalRevenue = filteredVenues.reduce((sum, v) => sum + (v.total_revenue_ttc || 0), 0);
     const totalOrders = filteredVenues.reduce((sum, v) => sum + (v.successful_orders || 0), 0);
@@ -166,7 +165,6 @@ const displayStats = useMemo(() => {
     };
   }
 
-  // Fallback si pas de periodStats
   return {
     totalRevenue: 0,
     totalOrders: 0,
@@ -175,7 +173,6 @@ const displayStats = useMemo(() => {
     venues: []
   };
 }, [loadingPeriod, filteredVenues]);
-
   // Calculer le panier moyen
   const avgBasket = displayStats.successfulOrders > 0 
     ? displayStats.totalRevenue / displayStats.successfulOrders 
@@ -189,7 +186,6 @@ const displayStats = useMemo(() => {
 const filteredVenues = useMemo(() => {
   if (!periodStats?.venues) return [];
 
-  // Enrichir chaque venue avec account_id depuis salesData
   const venuesWithAccount = periodStats.venues.map(venue => {
     const venueSale = salesData.find(s => s.venue_name === venue.venue_name);
     return {
@@ -210,7 +206,6 @@ const filteredVenues = useMemo(() => {
  const topVenues = filteredVenues
   .sort((a: any, b: any) => (b.total_revenue_ttc || 0) - (a.total_revenue_ttc || 0))
   .slice(0, 5);
-
   // Bottom 5 des venues
 const bottomVenues = filteredVenues
   .sort((a: any, b: any) => (a.total_revenue_ttc || 0) - (b.total_revenue_ttc || 0))
