@@ -14,73 +14,81 @@ class SecureApiService {
     this.backendUrl = import.meta.env.VITE_BACKEND_URL;
   }
 
-  // Méthode générique pour les appels sécurisés
-  private apiCall = async (endpoint: string, options: RequestInit = {}, retries = 2) => {
-    for (let i = 0; i <= retries; i++) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 90000);
-        
-        const response = await fetch(`${this.backendUrl}${endpoint}`, {
-          ...options,
-          signal: controller.signal,
-          headers: {
-            'Content-Type': 'application/json',
-            ...options.headers,
-          },
-        });
+  // 🔒 Méthode générique pour les appels sécurisés
+private async apiCall(endpoint: string, options: RequestInit = {}) {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 secondes au lieu du défaut
+    
+    const response = await fetch(`${this.backendUrl}${endpoint}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
 
-        clearTimeout(timeoutId);
+    clearTimeout(timeoutId);
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.message || `Erreur ${response.status}`);
-        }
-
-        return await response.json();
-      } catch (error) {
-        if (i === retries) {
-          console.error(`Erreur API ${endpoint} après ${retries + 1} tentatives:`, error);
-          throw error;
-        }
-        console.log(`Tentative ${i + 1} échouée, retry dans 3s...`);
-        await new Promise(r => setTimeout(r, 3000));
-      }
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Erreur ${response.status}`);
     }
+
+    return await response.json();
+  } catch (error) {
+    console.error(`Erreur API ${endpoint}:`, error);
+    throw error;
+  }
+}
+
+    // Récupérer les machines directement depuis Supabase
+  async fetchMachines() {
+    console.log('🚀 Connexion directe à Supabase pour récupérer les machines...');
+
+    const { data, error } = await supabase.from('machines').select('*');
+    if (error) {
+      console.error('❌ Erreur Supabase (machines):', error);
+      throw error;
+    }
+
+    console.log(`✅ ${data?.length || 0} machines récupérées depuis Supabase.`);
+    return data || [];
   }
 
-  // Récupérer les machines via le backend sécurisé
-  fetchMachines = async () => {
-    console.log('🔒 Récupération machines via backend sécurisé...');
-    const result = await this.apiCall('/api/machines');
-    return result.data || [];
+  // Récupérer les ventes directement depuis Supabase
+  async fetchSales(filters?: { startDate?: string; endDate?: string; limit?: number }) {
+    console.log('🚀 Connexion directe à Supabase pour récupérer les ventes...');
+
+    let query = supabase.from('sales').select('*');
+
+    if (filters?.startDate) query = query.gte('created_at', filters.startDate);
+    if (filters?.endDate) query = query.lte('created_at', filters.endDate);
+    if (filters?.limit) query = query.limit(filters.limit);
+
+    const { data, error } = await query;
+    if (error) {
+      console.error('❌ Erreur Supabase (sales):', error);
+      throw error;
+    }
+
+    console.log(`✅ ${data?.length || 0} ventes récupérées depuis Supabase.`);
+    return data || [];
   }
 
-  // Récupérer les ventes via le backend sécurisé
-  fetchSales = async (filters?: { startDate?: string; endDate?: string; limit?: number }) => {
-    console.log('🔒 Récupération ventes via backend sécurisé...');
-    
-    const params = new URLSearchParams();
-    if (filters?.startDate) params.append('startDate', filters.startDate);
-    if (filters?.endDate) params.append('endDate', filters.endDate);
-    if (filters?.limit) params.append('limit', filters.limit.toString());
-
-    const queryString = params.toString();
-    const endpoint = `/api/sales${queryString ? '?' + queryString : ''}`;
-    
-    const result = await this.apiCall(endpoint);
-    return result.data || [];
-  }
-
-  // Vérifier la santé du backend
-  checkHealth = async () => {
-    try {
-      return await this.apiCall('/health');
-    } catch (error) {
-      console.error('Backend non disponible:', error);
+  // Vérifier la santé (facultatif : on peut le supprimer)
+  async checkHealth() {
+    console.log('⚙️ Vérification Supabase...');
+    const { data, error } = await supabase.from('sales').select('id').limit(1);
+    if (error) {
+      console.error('❌ Supabase indisponible:', error);
       return null;
     }
+    console.log('✅ Supabase est opérationnel.');
+    return { status: 'OK' };
   }
+}
 }
 // Types simples pour éviter les erreurs d'import
 interface User {
