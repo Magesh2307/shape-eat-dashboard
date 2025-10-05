@@ -51,14 +51,14 @@ private async apiCall(endpoint: string, options: RequestInit = {}, retries = 2) 
 }
 
   // Récupérer les machines via le backend sécurisé
-  async fetchMachines() {
-    console.log('🔒 Récupération machines via backend sécurisé...');
-    const result = await this.apiCall('/api/machines');
-    return result.data || [];
-  }
+async fetchMachines(): Promise<any[]> {
+  console.log('🔒 Récupération machines via backend sécurisé...');
+  const result = await this.apiCall('/api/machines');
+  return result.data || [];
+}
 
   // Récupérer les ventes via le backend sécurisé
-  async fetchSales(filters?: { startDate?: string; endDate?: string; limit?: number }) {
+  async fetchSales(filters?: { startDate?: string; endDate?: string; limit?: number }) Promise<any[]> { ... }
     console.log('🔒 Récupération ventes via backend sécurisé...');
     
     const params = new URLSearchParams();
@@ -74,7 +74,7 @@ private async apiCall(endpoint: string, options: RequestInit = {}, retries = 2) 
   }
 
   // Vérifier la santé du backend
-  async checkHealth() {
+  async checkHealth(): Promise<any> { ... }
     try {
       return await this.apiCall('/health');
     } catch (error) {
