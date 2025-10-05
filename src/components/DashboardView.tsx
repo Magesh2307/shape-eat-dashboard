@@ -184,16 +184,22 @@ const DashboardView = ({
 const filteredVenues = useMemo(() => {
   if (!periodStats?.venues) return [];
 
-  const accountId = apiStats?.currentAccountId;
+  // Enrichir chaque venue avec account_id depuis salesData
+  const venuesWithAccount = periodStats.venues.map(venue => {
+    const venueSale = salesData.find(s => s.venue_name === venue.venue_name);
+    return {
+      ...venue,
+      account_id: venueSale?.account_id
+    };
+  });
 
-  if (accountId && accountId !== 'all') {
-    return periodStats.venues.filter(
-      (v: any) => Number(v.account_id) === Number(accountId)
-    );
+  const accountId = apiStats?.currentAccountId;
+  if (accountId) {
+    return venuesWithAccount.filter(v => Number(v.account_id) === Number(accountId));
   }
 
-  return periodStats.venues;
-}, [periodStats, apiStats?.currentAccountId]);
+  return venuesWithAccount;
+}, [periodStats, salesData, apiStats?.currentAccountId]);
 
   // Top 5 des venues
  const topVenues = filteredVenues
