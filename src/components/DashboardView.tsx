@@ -326,7 +326,6 @@ return (
         </div>
       )}
     </div>
-	</div>
 
       {/* Indicateur de chargement période */}
       {loadingPeriod && (
