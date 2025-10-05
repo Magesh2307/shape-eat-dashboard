@@ -86,6 +86,7 @@ interface Session {
 }
 interface Sale {
   id: string;
+  account_id?: number;
   total?: string;
   totalCharged?: string;
   charged?: string;
@@ -201,6 +202,7 @@ function App() {
     totalRevenue: 0
   });
   const [loadingProgress, setLoadingProgress] = useState('');
+  const [accountFilter, setAccountFilter] = useState<'all' | number>('all');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Gestion de l'authentification
@@ -478,6 +480,13 @@ const loadDataFromSupabase = async () => {
     }
 
     setSales(allSales); // Passer les vraies sales aux vues
+	
+	// Filtrer selon le compte sélectionné
+  const filteredSales = accountFilter === 'all' 
+    ? allSales 
+    : allSales.filter(sale => sale.account_id === accountFilter);
+  
+  setSales(filteredSales);
     
     // Calcul des stats
     const totalRevenue = allSales
@@ -824,6 +833,25 @@ if (isLoading && sales.length === 0) {
 		)}
       {/* Contenu principal */}
       <div className="lg:ml-64">
+	    {/* Sélecteur de compte */}
+  <div className="bg-slate-700/50 border-b border-slate-700/50 px-4 lg:px-8 py-3">
+    <div className="flex items-center space-x-3">
+      <label className="text-sm text-slate-400">Compte:</label>
+      <select
+        value={accountFilter}
+        onChange={(e) => setAccountFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+        className="px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+      >
+        <option value="all">Tous les comptes</option>
+        <option value="295">Compte 295 (Principal)</option>
+        <option value="337">Compte 337</option>
+        <option value="360">Compte 360</option>
+        <option value="340">Compte 340</option>
+        <option value="339">Compte 339</option>
+        <option value="338">Compte 338</option>
+      </select>
+    </div>
+  </div>
         {/* Header SANS FILTRES */}
 <header className="bg-slate-800/50 backdrop-blur-xl border-b border-slate-700/50 px-4 lg:px-8 py-4 lg:py-6">
   <div className="flex items-center justify-between">
@@ -923,6 +951,7 @@ if (isLoading && sales.length === 0) {
               loadProgress={loadingProgress}
               isLoading={isLoading}
               onLoadAll={handleLoadAll}
+			  accountFilter={accountFilter}
             />
           )}
           

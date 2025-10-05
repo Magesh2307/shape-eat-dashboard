@@ -8,7 +8,9 @@ dotenv.config({ path: '.env.local' }); // Charge .env.local
 // ✅ UTILISER LES VARIABLES D'ENVIRONNEMENT
 const VENDLIVE_API_URL = process.env.VENDLIVE_API_URL;
 const VENDLIVE_TOKEN = process.env.VENDLIVE_TOKEN;
-const VENDLIVE_ACCOUNT_ID = process.env.VENDLIVE_ACCOUNT_ID;
+const VENDLIVE_ACCOUNT_IDS = (process.env.VENDLIVE_ACCOUNT_IDS)
+  .split(',')
+  .map(id => id.trim());
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -172,7 +174,7 @@ async function fetchVendLiveData(
   }
 
   const url = new URL(VENDLIVE_API_URL);
-  url.searchParams.append('accountId', VENDLIVE_ACCOUNT_ID);
+  url.searchParams.append('accountId', accountId);
   url.searchParams.append('startDate', startDate);
   url.searchParams.append('endDate', endDate);
   url.searchParams.append('page', page.toString());
@@ -244,6 +246,7 @@ async function processBatch(sales: VendLiveSale[]): Promise<number> {
       const order: Order = {
         vendlive_id: uniqueId,
         sale_id: sale.id,
+		account_id: parseInt(accountId),
         product_sale_id: productSale.id,
         history_id: sale.history?.id || null,
         machine_id: sale.machine?.id || null,
@@ -325,7 +328,8 @@ async function processSalesTable(sales: VendLiveSale[]): Promise<number> {
     ));
 
     const saleRow: Sale = {
-      vendlive_id: sale.id.toString(),
+      vendlive_id: sale.id.toString
+	  account_id: parseInt(accountId),
       transaction_id: sale.id.toString(),
       machine_id: sale.machine.id,
       machine_name: sale.machine.friendlyName,
@@ -475,7 +479,7 @@ async function clearOldData(): Promise<void> {
   console.log('✅ Anciennes données supprimées (orders + sales)');
 }
 
-async function syncVendlive(): Promise<void> {
+async function syncVendlive(accountId: string): Promise<void> {
   const syncMode = process.env.SYNC_MODE || 'incremental';
   
   const startDate = process.env.SYNC_START_DATE || '2020-01-01';
@@ -548,7 +552,14 @@ async function syncVendlive(): Promise<void> {
 
 console.log('🚀 Démarrage de la synchronisation...');
 
-syncVendlive()
+async function syncAllAccounts() {
+  for (const accountId of VENDLIVE_ACCOUNT_IDS) {
+    console.log(`\n🔄 === SYNCHRONISATION COMPTE ${accountId} ===\n`);
+    await syncVendlive(accountId);
+  }
+}
+
+syncAllAccounts()
   .then(() => {
     console.log('✅ Script terminé avec succès');
     process.exit(0);
