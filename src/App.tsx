@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from './lib/supabaseClient';
 import DashboardView from './components/DashboardView';
 import SalesView from './components/SalesView';
@@ -11,7 +11,7 @@ class SecureApiService {
   private backendUrl: string;
 
   constructor() {
-    this.backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+    this.backendUrl = import.meta.env.VITE_BACKEND_URL;
   }
 
   // 🔒 Méthode générique pour les appels sécurisés
