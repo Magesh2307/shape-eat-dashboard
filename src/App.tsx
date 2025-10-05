@@ -442,11 +442,17 @@ const loadDataFromSupabase = async () => {
     let offset = 0;
 
     while (hasMore) {
-      const { data: batch, error } = await supabase
-        .from('sales')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .range(offset, offset + batchSize - 1);
+      let query = supabase
+  .from('sales')
+  .select('*')
+  .order('created_at', { ascending: false })
+  .range(offset, offset + batchSize - 1);
+
+if (accountFilter !== 'all') {
+  query = query.eq('account_id', accountFilter);
+}
+
+const { data: batch, error } = await query;
 
       if (error) throw error;
       
@@ -581,10 +587,13 @@ const fetchMachinesData = async () => {
   try {
     console.log('🔒 Chargement des machines via backend sécurisé...');
     const machinesData = await apiService.fetchMachines();
-    
-    console.log('✅ Machines récupérées:', machinesData.length);
-    setMachines(machinesData);
-    
+
+    const filtered = accountFilter === 'all'
+      ? machinesData
+      : machinesData.filter(m => Number(m.account_id) === Number(accountFilter));
+
+    console.log('✅ Machines filtrées:', filtered.length);
+    setMachines(filtered);
   } catch (err) {
     console.error('❌ Erreur machines:', err);
     setError('Erreur lors du chargement des machines. Vérifiez que le backend est démarré.');
@@ -692,12 +701,10 @@ const filteredMachines = useMemo(() => {
 
 // useEffect principal - CORRIGÉ
 useEffect(() => {
-  // Ne charger que si authentifié
   if (!session || loading) return;
-  
+
   const loadData = async () => {
     console.log('🚀 === DÉMARRAGE AVEC SUPABASE ===');
-    
     try {
       await fetchMachinesData();
       await loadDataFromSupabase();
@@ -708,9 +715,9 @@ useEffect(() => {
       setIsLoading(false);
     }
   };
-  
+
   loadData();
-}, [session, loading]); // ← AJOUTEZ session ET loading comme dépendances
+}, [session, loading, accountFilter]);
 
   if (loading) {
   return (
