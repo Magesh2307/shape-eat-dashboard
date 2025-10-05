@@ -140,36 +140,41 @@ const DashboardView = ({
 };
 
   // Stats à afficher selon la période sélectionnée
-  const displayStats = useMemo(() => {
-    if (loadingPeriod) {
-      return {
-        totalRevenue: 0,
-        totalOrders: 0,
-        successfulOrders: 0,
-        activeVenues: 0,
-        venues: []
-      };
-    }
-
-    if (periodStats) {
-      return {
-        totalRevenue: periodStats.total_revenue_ttc || 0,
-        totalOrders: periodStats.total_orders || 0,
-        successfulOrders: periodStats.successful_orders || 0,
-        activeVenues: periodStats.active_machines || 0,
-        venues: periodStats.venues || []
-      };
-    }
-
-    // Fallback sur les stats générales
+  // Stats à afficher selon la période ET le compte sélectionné
+const displayStats = useMemo(() => {
+  if (loadingPeriod) {
     return {
-      totalRevenue: apiStats.totalRevenue || 0,
-      totalOrders: apiStats.todaySales || 0,
-      successfulOrders: apiStats.successfulSales || 0,
-      activeVenues: machines.length || 0,
+      totalRevenue: 0,
+      totalOrders: 0,
+      successfulOrders: 0,
+      activeVenues: 0,
       venues: []
     };
-  }, [periodStats, loadingPeriod, apiStats, machines]);
+  }
+
+  // TOUJOURS utiliser filteredVenues (déjà filtré par compte)
+  if (filteredVenues.length > 0) {
+    const totalRevenue = filteredVenues.reduce((sum, v) => sum + (v.total_revenue_ttc || 0), 0);
+    const totalOrders = filteredVenues.reduce((sum, v) => sum + (v.successful_orders || 0), 0);
+    
+    return {
+      totalRevenue,
+      totalOrders,
+      successfulOrders: totalOrders,
+      activeVenues: filteredVenues.length,
+      venues: filteredVenues
+    };
+  }
+
+  // Fallback si pas de periodStats
+  return {
+    totalRevenue: 0,
+    totalOrders: 0,
+    successfulOrders: 0,
+    activeVenues: 0,
+    venues: []
+  };
+}, [loadingPeriod, filteredVenues]);
 
   // Calculer le panier moyen
   const avgBasket = displayStats.successfulOrders > 0 
