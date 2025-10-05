@@ -14,51 +14,50 @@ class SecureApiService {
     this.backendUrl = import.meta.env.VITE_BACKEND_URL;
   }
 
-  // 🔒 Méthode générique pour les appels sécurisés
-private async apiCall(endpoint: string, options: RequestInit = {}, retries = 2) {
-  for (let i = 0; i <= retries; i++) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 90000);
-      
-      const response = await fetch(`${this.backendUrl}${endpoint}`, {
-        ...options,
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
-      });
+  // Méthode générique pour les appels sécurisés
+  private apiCall = async (endpoint: string, options: RequestInit = {}, retries = 2) => {
+    for (let i = 0; i <= retries; i++) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 90000);
+        
+        const response = await fetch(`${this.backendUrl}${endpoint}`, {
+          ...options,
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            ...options.headers,
+          },
+        });
 
-      clearTimeout(timeoutId);
+        clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `Erreur ${response.status}`);
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `Erreur ${response.status}`);
+        }
+
+        return await response.json();
+      } catch (error) {
+        if (i === retries) {
+          console.error(`Erreur API ${endpoint} après ${retries + 1} tentatives:`, error);
+          throw error;
+        }
+        console.log(`Tentative ${i + 1} échouée, retry dans 3s...`);
+        await new Promise(r => setTimeout(r, 3000));
       }
-
-      return await response.json();
-    } catch (error) {
-      if (i === retries) {
-        console.error(`Erreur API ${endpoint} après ${retries + 1} tentatives:`, error);
-        throw error;
-      }
-      console.log(`Tentative ${i + 1} échouée, retry dans 3s...`);
-      await new Promise(r => setTimeout(r, 3000));
     }
   }
-}
-}
 
   // Récupérer les machines via le backend sécurisé
-async fetchMachines(): Promise<any[]> {
-  console.log('🔒 Récupération machines via backend sécurisé...');
-  const result = await this.apiCall('/api/machines');
-  return result.data || [];
-}
+  fetchMachines = async () => {
+    console.log('🔒 Récupération machines via backend sécurisé...');
+    const result = await this.apiCall('/api/machines');
+    return result.data || [];
+  }
 
   // Récupérer les ventes via le backend sécurisé
-  async fetchSales(filters?: { startDate?: string; endDate?: string; limit?: number }) Promise<any[]> { ... }
+  fetchSales = async (filters?: { startDate?: string; endDate?: string; limit?: number }) => {
     console.log('🔒 Récupération ventes via backend sécurisé...');
     
     const params = new URLSearchParams();
@@ -74,7 +73,7 @@ async fetchMachines(): Promise<any[]> {
   }
 
   // Vérifier la santé du backend
-  async checkHealth(): Promise<any> { ... }
+  checkHealth = async () => {
     try {
       return await this.apiCall('/health');
     } catch (error) {
