@@ -139,7 +139,26 @@ const DashboardView = ({
   }
 };
 
-  // Stats à afficher selon la période sélectionnée
+// Appliquer le filtre d'account (propagée depuis App.tsx)
+const filteredVenues = useMemo(() => {
+  if (!periodStats?.venues) return [];
+
+  const venuesWithAccount = periodStats.venues.map(venue => {
+    const venueSale = salesData.find(s => s.venue_name === venue.venue_name);
+    return {
+      ...venue,
+      account_id: venueSale?.account_id
+    };
+  });
+
+  const accountId = apiStats?.currentAccountId;
+  if (accountId) {
+    return venuesWithAccount.filter(v => Number(v.account_id) === Number(accountId));
+  }
+
+  return venuesWithAccount;
+}, [periodStats, salesData, apiStats?.currentAccountId]);
+
   // Stats à afficher selon la période ET le compte sélectionné
 const displayStats = useMemo(() => {
   if (loadingPeriod) {
@@ -173,6 +192,7 @@ const displayStats = useMemo(() => {
     venues: []
   };
 }, [loadingPeriod, filteredVenues]);
+
   // Calculer le panier moyen
   const avgBasket = displayStats.successfulOrders > 0 
     ? displayStats.totalRevenue / displayStats.successfulOrders 
@@ -182,25 +202,6 @@ const displayStats = useMemo(() => {
   console.log("🎯 Filtrage pour account ID:", apiStats?.currentAccountId);
 }, [apiStats?.currentAccountId]);
 	
-	// Appliquer le filtre d'account (propagée depuis App.tsx)
-const filteredVenues = useMemo(() => {
-  if (!periodStats?.venues) return [];
-
-  const venuesWithAccount = periodStats.venues.map(venue => {
-    const venueSale = salesData.find(s => s.venue_name === venue.venue_name);
-    return {
-      ...venue,
-      account_id: venueSale?.account_id
-    };
-  });
-
-  const accountId = apiStats?.currentAccountId;
-  if (accountId) {
-    return venuesWithAccount.filter(v => Number(v.account_id) === Number(accountId));
-  }
-
-  return venuesWithAccount;
-}, [periodStats, salesData, apiStats?.currentAccountId]);
 
   // Top 5 des venues
  const topVenues = filteredVenues
