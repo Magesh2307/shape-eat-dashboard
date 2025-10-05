@@ -4,9 +4,9 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
-   build: {
-    sourcemap: true, // ← Ajoutez cette ligne
-  }
+  build: {
+    sourcemap: true,
+  }, // ← VIRGULE MANQUANTE ICI
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
