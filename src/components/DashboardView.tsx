@@ -176,20 +176,24 @@ const DashboardView = ({
     ? displayStats.totalRevenue / displayStats.successfulOrders 
     : 0;
 	
+	useEffect(() => {
+  console.log("🎯 Filtrage pour account ID:", apiStats?.currentAccountId);
+}, [apiStats?.currentAccountId]);
+	
 	// Appliquer le filtre d'account (propagée depuis App.tsx)
 const filteredVenues = useMemo(() => {
   if (!periodStats?.venues) return [];
 
-  // On suppose que chaque venue contient un champ account_id
-  if (apiStats?.currentAccountId) {
+  const accountId = apiStats?.currentAccountId;
+
+  if (accountId && accountId !== 'all') {
     return periodStats.venues.filter(
-      (v: any) => v.account_id === apiStats.currentAccountId
+      (v: any) => Number(v.account_id) === Number(accountId)
     );
   }
 
-  // Si aucun compte sélectionné → on garde tout
   return periodStats.venues;
-}, [periodStats, apiStats.currentAccountId]);
+}, [periodStats, apiStats?.currentAccountId]);
 
   // Top 5 des venues
  const topVenues = filteredVenues

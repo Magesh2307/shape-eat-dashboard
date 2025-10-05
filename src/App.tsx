@@ -969,16 +969,19 @@ if (isLoading && sales.length === 0) {
 
         {/* Contenu des vues */}
         <main className="p-8">
-		{activeView === 'dashboard' && (
-		  <DashboardView 
-			salesData={filteredSales}  // ← Données filtrées
-			apiStats={apiStats}
-			machines={filteredMachines}  // ← Machines filtrées
-			loadProgress={loadingProgress}
-			isLoading={isLoading}
-			onLoadAll={handleLoadAll}
-		  />
-		)}
+{activeView === 'dashboard' && (
+  <DashboardView
+    salesData={filteredSales}
+    apiStats={{
+      ...apiStats,
+      currentAccountId: accountFilter === 'all' ? null : Number(accountFilter), // ✅ ajoute la clé ici
+    }}
+    machines={filteredMachines}
+    loadProgress={loadingProgress}
+    isLoading={isLoading}
+    onLoadAll={handleLoadAll}
+  />
+)}
 
 		{activeView === 'sales' && (
 		  <SalesView sales={filteredSales} supabase={supabase} />
